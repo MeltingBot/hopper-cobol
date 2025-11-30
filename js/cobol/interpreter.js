@@ -272,6 +272,8 @@ class Variable {
         this.blankWhenZero = definition.blankWhenZero || false;
         // JUSTIFIED RIGHT: right-justify alphanumeric data
         this.justified = definition.justified || null;
+        // SIGN clause: { position: 'LEADING'|'TRAILING', separate: boolean }
+        this.signClause = definition.signClause || null;
         // Initialize value AFTER children array exists (for getTotalLength in groups)
         this.value = this.getInitialValue();
     }
@@ -434,7 +436,9 @@ class Variable {
 
             case 'DISPLAY':
             default:
-                return this.picInfo.length;  // 1 byte per character
+                // Add 1 byte for SIGN SEPARATE CHARACTER
+                const signExtra = (this.signClause?.separate) ? 1 : 0;
+                return this.picInfo.length + signExtra;
         }
     }
 
@@ -520,9 +524,20 @@ class Variable {
             } else {
                 displayVal = val;
             }
-            // Add sign prefix for negative signed values
-            if (this.picInfo.signed && this.sign < 0) {
-                return '-' + displayVal;
+            // Handle SIGN clause for display
+            if (this.picInfo.signed) {
+                const signChar = this.sign < 0 ? '-' : '+';
+                if (this.signClause?.separate) {
+                    // SIGN SEPARATE: explicit + or - character
+                    if (this.signClause.position === 'LEADING') {
+                        return signChar + displayVal;
+                    } else {
+                        return displayVal + signChar;
+                    }
+                } else if (this.sign < 0) {
+                    // Default: only show - for negative
+                    return '-' + displayVal;
+                }
             }
             return displayVal;
         }

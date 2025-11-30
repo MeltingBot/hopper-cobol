@@ -526,6 +526,7 @@ export class Parser {
             usage: null,             // USAGE clause (DISPLAY, COMP, COMP-3, BINARY, etc.)
             blankWhenZero: false,    // BLANK WHEN ZERO clause
             justified: null,         // JUSTIFIED RIGHT clause
+            signClause: null,        // SIGN clause: { position: 'LEADING'|'TRAILING', separate: boolean }
             children: [],
             conditionNames: [],  // 88 level condition names attached to this item
         });
@@ -623,6 +624,25 @@ export class Parser {
                 this.advance();
                 this.optional(TokenType.RIGHT);
                 node.justified = 'RIGHT';
+            } else if (this.check(TokenType.SIGN)) {
+                // SIGN [IS] LEADING|TRAILING [SEPARATE [CHARACTER]]
+                this.advance();
+                this.optional(TokenType.IS);
+                let position = 'TRAILING'; // default
+                let separate = false;
+                if (this.check(TokenType.LEADING)) {
+                    this.advance();
+                    position = 'LEADING';
+                } else if (this.check(TokenType.TRAILING)) {
+                    this.advance();
+                    position = 'TRAILING';
+                }
+                if (this.check(TokenType.SEPARATE)) {
+                    this.advance();
+                    this.optional(TokenType.CHARACTER);
+                    separate = true;
+                }
+                node.signClause = { position, separate };
             } else {
                 this.advance();
             }
