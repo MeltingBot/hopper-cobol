@@ -115,6 +115,7 @@ hopper-cobol/
 
 | Category | Description |
 |----------|-------------|
+| DEMO | Pedagogical demonstrations (CALL/COPY, Printer) |
 | ECRAN | Screen control demonstrations (IBM 3270) |
 | ERP | Enterprise resource planning (clients, invoicing, inventory) |
 | RH | Human resources (payroll) |

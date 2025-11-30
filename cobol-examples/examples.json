@@ -1,5 +1,19 @@
 [
   {
+    "id": "demo-sous-programmes",
+    "title": "Demo CALL/COPY",
+    "category": "DEMO",
+    "description": "Démonstration des sous-programmes CALL avec USING BY REFERENCE/CONTENT, ON EXCEPTION, et COPY.",
+    "file": "demo-sous-programmes.cob"
+  },
+  {
+    "id": "demo-imprimante",
+    "title": "Demo Imprimante",
+    "category": "DEMO",
+    "description": "Rapport de ventes pour l'imprimante dot-matrix. Cliquez sur l'icône imprimante après exécution.",
+    "file": "demo-imprimante.cob"
+  },
+  {
     "id": "mandelbrot",
     "title": "Fractale Mandelbrot",
     "category": "ECRAN",

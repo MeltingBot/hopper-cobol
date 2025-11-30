@@ -13,6 +13,7 @@ let examples = [];
 
 // Category icons and colors
 const categoryInfo = {
+    'DEMO': { icon: '🎓', color: '#ffcc00' },
     'ECRAN': { icon: '🖥️', color: '#00ff88' },
     'ERP': { icon: '🏢', color: '#4a9eff' },
     'RH': { icon: '👥', color: '#aa66ff' },
