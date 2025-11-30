@@ -212,6 +212,19 @@ export const TokenType = {
     PACKED_DECIMAL: 'PACKED_DECIMAL',
     DISPLAY: 'DISPLAY',
 
+    // Keywords - Data description clauses
+    JUSTIFIED: 'JUSTIFIED',
+    JUST: 'JUST',
+    RIGHT: 'RIGHT',
+    SIGN: 'SIGN',
+    LEADING: 'LEADING',
+    TRAILING: 'TRAILING',
+    SEPARATE: 'SEPARATE',
+    CHARACTER: 'CHARACTER',
+    RENAMES: 'RENAMES',
+    THROUGH: 'THROUGH',
+    THRU: 'THRU',
+
     // Keywords - Other
     IS: 'IS',
     ARE: 'ARE',
@@ -464,6 +477,18 @@ const KEYWORDS = {
     'COMPUTATIONAL-5': TokenType.COMPUTATIONAL_5,
     'BINARY': TokenType.BINARY,
     'PACKED-DECIMAL': TokenType.PACKED_DECIMAL,
+    // Data description clauses
+    'JUSTIFIED': TokenType.JUSTIFIED,
+    'JUST': TokenType.JUST,
+    'RIGHT': TokenType.RIGHT,
+    'SIGN': TokenType.SIGN,
+    'LEADING': TokenType.LEADING,
+    'TRAILING': TokenType.TRAILING,
+    'SEPARATE': TokenType.SEPARATE,
+    'CHARACTER': TokenType.CHARACTER,
+    'RENAMES': TokenType.RENAMES,
+    'THROUGH': TokenType.THROUGH,
+    'THRU': TokenType.THRU,
     'IS': TokenType.IS,
     'ARE': TokenType.ARE,
     'OF': TokenType.OF,

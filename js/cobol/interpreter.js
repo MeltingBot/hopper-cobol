@@ -268,30 +268,40 @@ class Variable {
         this.descendingKey = definition.descendingKey || null;
         // USAGE clause: DISPLAY (default), BINARY (COMP/COMP-4), PACKED-DECIMAL (COMP-3), etc.
         this.usage = definition.usage || 'DISPLAY';
+        // BLANK WHEN ZERO: display spaces instead of zeros
+        this.blankWhenZero = definition.blankWhenZero || false;
+        // JUSTIFIED RIGHT: right-justify alphanumeric data
+        this.justified = definition.justified || null;
         // Initialize value AFTER children array exists (for getTotalLength in groups)
         this.value = this.getInitialValue();
     }
 
     getInitialValue() {
         if (this.initialValue) {
+            let result;
             if (this.initialValue.type === 'string') {
-                return formatValue(this.initialValue.value, this.pic);
-            }
-            if (this.initialValue.type === 'number') {
+                result = this.initialValue.value;
+            } else if (this.initialValue.type === 'number') {
                 // Store sign for signed numeric variables
                 if (this.picInfo.signed && this.initialValue.value < 0) {
                     this.sign = -1;
                 }
                 return formatValue(this.initialValue.value, this.pic);
-            }
-            if (this.initialValue.type === 'figurative') {
+            } else if (this.initialValue.type === 'figurative') {
                 return this.getFigurativeValue(this.initialValue.value);
-            }
-            if (this.initialValue.type === 'all') {
+            } else if (this.initialValue.type === 'all') {
                 // ALL "x" - repeat the character/string to fill the field
                 const pattern = this.initialValue.value;
                 const repeats = Math.ceil(this.picInfo.length / pattern.length);
                 return pattern.repeat(repeats).substring(0, this.picInfo.length);
+            }
+
+            // Apply JUSTIFIED RIGHT for alphanumeric string values
+            if (result !== undefined && this.justified === 'RIGHT' && this.picInfo.type !== 'numeric') {
+                return result.padStart(this.picInfo.length, ' ').slice(-this.picInfo.length);
+            }
+            if (result !== undefined) {
+                return formatValue(result, this.pic);
             }
         }
 
@@ -488,6 +498,14 @@ class Variable {
         }
 
         if (this.picInfo.type === 'numeric') {
+            // Check BLANK WHEN ZERO - return spaces if value is zero
+            if (this.blankWhenZero) {
+                const numVal = this.getNumericValue();
+                if (numVal === 0) {
+                    return ' '.repeat(this.picInfo.length);
+                }
+            }
+
             // For edited pictures, apply the edit mask
             if (this.picInfo.edited) {
                 return this.applyEditMask();
@@ -613,7 +631,13 @@ class Variable {
             if (this.picInfo.signed && typeof value === 'number') {
                 this.sign = value < 0 ? -1 : 1;
             }
-            this.value = formatValue(value, this.pic);
+            // Apply JUSTIFIED RIGHT for alphanumeric data
+            if (this.justified === 'RIGHT' && this.picInfo.type !== 'numeric') {
+                const str = String(value || '');
+                this.value = str.padStart(this.picInfo.length, ' ').slice(-this.picInfo.length);
+            } else {
+                this.value = formatValue(value, this.pic);
+            }
             // Propagate change to parent
             this.propagateToParent();
         }
@@ -665,6 +689,9 @@ class Variable {
             // Elementary item: store as-is, padding/truncating to fit the PIC length
             if (this.picInfo.type === 'numeric') {
                 this.value = str.padStart(this.picInfo.length, '0').substring(0, this.picInfo.length);
+            } else if (this.justified === 'RIGHT') {
+                // JUSTIFIED RIGHT: right-align alphanumeric data
+                this.value = str.padStart(this.picInfo.length, ' ').slice(-this.picInfo.length);
             } else {
                 this.value = str.padEnd(this.picInfo.length, ' ').substring(0, this.picInfo.length);
             }

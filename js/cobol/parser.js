@@ -524,6 +524,8 @@ export class Parser {
             ascendingKey: null,      // Key for SEARCH ALL
             descendingKey: null,     // Key for SEARCH ALL
             usage: null,             // USAGE clause (DISPLAY, COMP, COMP-3, BINARY, etc.)
+            blankWhenZero: false,    // BLANK WHEN ZERO clause
+            justified: null,         // JUSTIFIED RIGHT clause
             children: [],
             conditionNames: [],  // 88 level condition names attached to this item
         });
@@ -608,6 +610,19 @@ export class Parser {
             } else if (this.isUsageType()) {
                 // Short form: COMP, COMP-3, BINARY, etc. without USAGE keyword
                 node.usage = this.parseUsageType();
+            } else if (this.check(TokenType.BLANK)) {
+                // BLANK [WHEN] ZERO[S]
+                this.advance();
+                this.optional(TokenType.WHEN);
+                if (this.checkAny(TokenType.ZERO, TokenType.ZEROS, TokenType.ZEROES)) {
+                    this.advance();
+                    node.blankWhenZero = true;
+                }
+            } else if (this.check(TokenType.JUSTIFIED) || this.check(TokenType.JUST)) {
+                // JUSTIFIED [RIGHT] or JUST [RIGHT]
+                this.advance();
+                this.optional(TokenType.RIGHT);
+                node.justified = 'RIGHT';
             } else {
                 this.advance();
             }
