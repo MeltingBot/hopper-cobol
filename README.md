@@ -2,7 +2,7 @@
 
 A web-based COBOL emulator with IBM 029 punch card visualization, running entirely in the browser.
 
-**[Live Demo](https://YOUR_USERNAME.github.io/hopper-cobol/)** *(update after deployment)*
+**[Live Demo](https://meltingbot.github.io/hopper-cobol/)**
 
 ![HOPPER Screenshot](screenshot.png)
 
@@ -38,7 +38,7 @@ A web-based COBOL emulator with IBM 029 punch card visualization, running entire
 ### Local Development
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/hopper-cobol.git
+git clone https://github.com/MeltingBot/hopper-cobol.git
 cd hopper-cobol
 
 # Start a local server (Python)
@@ -50,13 +50,10 @@ npx serve .
 # Open http://localhost:8000
 ```
 
-### GitHub Pages Deployment
+### GitHub Pages
 
-1. Push to GitHub
-2. Go to **Settings** > **Pages**
-3. Select **Source**: Deploy from a branch
-4. Select **Branch**: `main` / `root`
-5. Save - your site will be live at `https://YOUR_USERNAME.github.io/hopper-cobol/`
+The site is deployed automatically via GitHub Pages at:
+https://meltingbot.github.io/hopper-cobol/
 
 No build step required - it's pure static HTML/CSS/JS!
 
