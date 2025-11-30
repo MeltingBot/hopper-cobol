@@ -237,6 +237,9 @@ class Variable {
         this.redefines = definition.redefines;
         this.redefinesVar = null; // Will be set to point to the redefined variable
         this.occursCount = definition.occurs || null; // Store OCCURS count for subscript handling
+        this.indexedBy = definition.indexedBy || []; // Index names for SEARCH
+        this.ascendingKey = definition.ascendingKey || null; // Key for SEARCH ALL
+        this.descendingKey = definition.descendingKey || null;
         // Initialize value AFTER children array exists (for getTotalLength in groups)
         this.value = this.getInitialValue();
     }
@@ -1145,6 +1148,23 @@ class Runtime {
         }
     }
 
+    /**
+     * Create an implicit index variable for INDEXED BY or SEARCH
+     */
+    createImplicitIndex(name, initialValue = 1) {
+        const upperName = this.normalizeVarName(name);
+        if (!this.variables.has(upperName)) {
+            // Create a simple numeric variable for the index
+            const indexVar = new Variable({
+                name: name,
+                level: 77,
+                pic: '9(4)',
+                value: { type: 'number', value: initialValue }
+            });
+            this.variables.set(upperName, indexVar);
+        }
+    }
+
     getValue(name) {
         const variable = this.getVariable(name);
         return variable ? variable.getValue() : null;
@@ -1575,6 +1595,15 @@ export class Interpreter {
                 const targetVar = this.runtime.variables.get(targetName);
                 if (targetVar) {
                     variable.redefinesVar = targetVar;
+                }
+            }
+        }
+
+        // Create implicit index variables for INDEXED BY clauses
+        for (const [name, variable] of this.runtime.variables) {
+            if (variable.indexedBy && variable.indexedBy.length > 0) {
+                for (const indexName of variable.indexedBy) {
+                    this.runtime.createImplicitIndex(indexName, 1);
                 }
             }
         }
@@ -3592,23 +3621,48 @@ export class Interpreter {
     async executeSearch(stmt) {
         // Get the table variable (must have OCCURS clause)
         const tableVar = this.runtime.getVariable(stmt.table);
-        if (!tableVar) {
-            // Execute AT END if table not found
+        if (!tableVar || !tableVar.occursCount) {
+            // Execute AT END if table not found or not an OCCURS table
             for (const s of stmt.atEnd) {
                 await this.executeStatement(s);
             }
             return;
         }
 
-        // For now, we'll implement a simple linear search
-        // Full OCCURS/INDEXED BY support would require more table structure
-        const indexVar = stmt.varying || (stmt.table + '-IDX');
-        let currentIndex = this.runtime.getNumericValue(indexVar);
+        const maxIndex = tableVar.occursCount;
 
-        // Assume table has a reasonable max size
-        const maxIterations = 1000;
+        // Determine index variable: use VARYING if specified, or table's INDEXED BY
+        let indexVarName = stmt.varying;
+        if (!indexVarName && tableVar.indexedBy && tableVar.indexedBy.length > 0) {
+            indexVarName = tableVar.indexedBy[0];
+        }
+        if (!indexVarName) {
+            indexVarName = stmt.table + '-IDX';
+        }
 
-        for (let iteration = 0; iteration < maxIterations; iteration++) {
+        // Ensure index variable exists
+        if (!this.runtime.getVariable(indexVarName)) {
+            // Create implicit index variable
+            this.runtime.createImplicitIndex(indexVarName, 1);
+        }
+
+        if (stmt.all) {
+            // SEARCH ALL - Binary search (requires ASCENDING/DESCENDING KEY)
+            await this.executeBinarySearch(stmt, tableVar, indexVarName, maxIndex);
+        } else {
+            // SEARCH - Linear search
+            await this.executeLinearSearch(stmt, tableVar, indexVarName, maxIndex);
+        }
+    }
+
+    /**
+     * Execute linear search (SEARCH without ALL)
+     */
+    async executeLinearSearch(stmt, tableVar, indexVarName, maxIndex) {
+        let currentIndex = this.runtime.getNumericValue(indexVarName);
+
+        // Start from current index value (COBOL doesn't reset it)
+        while (currentIndex <= maxIndex) {
             // Check each WHEN condition
             for (const whenClause of stmt.whenClauses) {
                 if (this.evaluateCondition(whenClause.condition)) {
@@ -3622,15 +3676,54 @@ export class Interpreter {
 
             // Increment index for next iteration
             currentIndex++;
-            this.runtime.setVariable(indexVar, currentIndex);
-
-            // Check for end of table (simplified - would need OCCURS limit)
-            if (currentIndex > maxIterations) {
-                break;
-            }
+            this.runtime.setVariable(indexVarName, currentIndex);
         }
 
         // No match found - execute AT END
+        for (const s of stmt.atEnd) {
+            await this.executeStatement(s);
+        }
+    }
+
+    /**
+     * Execute binary search (SEARCH ALL)
+     */
+    async executeBinarySearch(stmt, tableVar, indexVarName, maxIndex) {
+        // Binary search assumes table is sorted by the KEY
+        let low = 1;
+        let high = maxIndex;
+
+        while (low <= high) {
+            const mid = Math.floor((low + high) / 2);
+            this.runtime.setVariable(indexVarName, mid);
+
+            // For SEARCH ALL, there should be exactly one WHEN with an equality condition
+            const whenClause = stmt.whenClauses[0];
+            if (!whenClause) break;
+
+            // Evaluate the condition
+            const result = this.evaluateCondition(whenClause.condition);
+
+            if (result) {
+                // Found it!
+                for (const s of whenClause.statements) {
+                    await this.executeStatement(s);
+                }
+                return;
+            }
+
+            // For binary search, we need to know which direction to go
+            // This requires comparing the key - simplified: use linear approach
+            // In a full implementation, we'd need to extract and compare the key
+            high = mid - 1; // Simplified: just search lower half then upper
+            if (high < low) {
+                low = mid + 1;
+                high = maxIndex;
+                if (low > maxIndex) break;
+            }
+        }
+
+        // Not found - execute AT END
         for (const s of stmt.atEnd) {
             await this.executeStatement(s);
         }

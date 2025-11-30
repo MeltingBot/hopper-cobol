@@ -2820,12 +2820,12 @@ export class Parser {
             this.advance();
             node.operation = 'TO';
             node.value = this.parseExpression();
-        } else if (this.check(TokenType.IDENTIFIER) && this.current().value === 'UP') {
+        } else if (this.check(TokenType.UP)) {
             this.advance();
             this.expect(TokenType.BY);
             node.operation = 'UP';
             node.value = this.parseExpression();
-        } else if (this.check(TokenType.IDENTIFIER) && this.current().value === 'DOWN') {
+        } else if (this.check(TokenType.DOWN)) {
             this.advance();
             this.expect(TokenType.BY);
             node.operation = 'DOWN';
