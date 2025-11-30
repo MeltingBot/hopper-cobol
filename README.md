@@ -33,22 +33,120 @@ Use the dialect selector in the editor to choose a specific version or let auto-
 ## Supported COBOL Features
 
 ### Data Division
-- Level numbers (01-49, 66, 77, 88)
-- 88-level condition names with VALUE/VALUES/THRU
-- PIC clauses (X, 9, A, V, S, Z)
-- VALUE clauses
-- WORKING-STORAGE and FILE SECTION
 
-### Procedure Division
-- DISPLAY, ACCEPT
-- MOVE, INITIALIZE
-- ADD, SUBTRACT, MULTIPLY, DIVIDE, COMPUTE
-- IF/ELSE/END-IF
-- EVALUATE/WHEN/END-EVALUATE
-- PERFORM (TIMES, UNTIL, VARYING, inline)
-- GO TO, EXIT, STOP RUN
-- SORT/MERGE with INPUT/OUTPUT PROCEDURE
-- File operations: OPEN, READ, WRITE, REWRITE, DELETE, CLOSE
+| Feature | Syntax | Status |
+|---------|--------|--------|
+| Level numbers | `01` to `49`, `66`, `77`, `88` | ✅ |
+| PICTURE clause | `PIC X(10)`, `PIC 9(5)V99`, `PIC S9(4)` | ✅ |
+| VALUE clause | `VALUE "text"`, `VALUE 123`, `VALUE ZEROS` | ✅ |
+| REDEFINES | `05 VAR-B REDEFINES VAR-A` | ✅ |
+| OCCURS | `OCCURS 10 TIMES`, `OCCURS 1 TO 100 DEPENDING ON` | ✅ |
+| INDEXED BY | `OCCURS 10 INDEXED BY IDX-1` | ✅ |
+| 88-level conditions | `88 IS-VALID VALUE "Y" "O".` | ✅ |
+| VALUE THRU | `88 IN-RANGE VALUE 1 THRU 100.` | ✅ |
+| WORKING-STORAGE | `WORKING-STORAGE SECTION.` | ✅ |
+| FILE SECTION | `FD`, `SELECT`, `ASSIGN` | ✅ |
+| USAGE | `COMP`, `BINARY`, `PACKED-DECIMAL` | ⚠️ Parsed |
+
+### Procedure Division - Statements
+
+| Statement | Syntax Example | Status |
+|-----------|----------------|--------|
+| DISPLAY | `DISPLAY "Hello" WS-VAR` | ✅ |
+| ACCEPT | `ACCEPT WS-INPUT` | ✅ |
+| MOVE | `MOVE X TO Y Z` | ✅ |
+| INITIALIZE | `INITIALIZE WS-RECORD` | ✅ |
+| ADD | `ADD A B TO C GIVING D` | ✅ |
+| SUBTRACT | `SUBTRACT A FROM B GIVING C` | ✅ |
+| MULTIPLY | `MULTIPLY A BY B GIVING C` | ✅ |
+| DIVIDE | `DIVIDE A INTO B GIVING C REMAINDER R` | ✅ |
+| COMPUTE | `COMPUTE X = (A + B) * C / D ** 2` | ✅ |
+| IF/ELSE | `IF cond THEN ... ELSE ... END-IF` | ✅ |
+| EVALUATE | `EVALUATE var WHEN val ... END-EVALUATE` | ✅ |
+| PERFORM | `PERFORM para`, `PERFORM n TIMES`, `PERFORM UNTIL`, `PERFORM VARYING` | ✅ |
+| GO TO | `GO TO paragraph-name` | ✅ |
+| EXIT | `EXIT`, `EXIT PARAGRAPH` | ✅ |
+| STOP RUN | `STOP RUN` | ✅ |
+| CONTINUE | `CONTINUE` | ✅ |
+| SET | `SET idx TO 5`, `SET idx UP BY 1`, `SET cond TO TRUE` | ✅ |
+
+### String Manipulation (COBOL-74/85)
+
+| Statement | Syntax Example | Status |
+|-----------|----------------|--------|
+| STRING | `STRING a DELIMITED BY " " b DELIMITED BY SIZE INTO c` | ✅ |
+| UNSTRING | `UNSTRING src DELIMITED BY ";" INTO a b c TALLYING cnt` | ✅ |
+| INSPECT TALLYING | `INSPECT var TALLYING cnt FOR ALL "X"` | ✅ |
+| INSPECT REPLACING | `INSPECT var REPLACING ALL "X" BY "Y"` | ✅ |
+| INSPECT CONVERTING | `INSPECT var CONVERTING "abc" TO "ABC"` | ✅ |
+| Reference Modification | `MOVE WS-VAR(1:5) TO WS-SUB` | ✅ |
+| Subscripting | `MOVE TABLE-ITEM(I) TO WS-VAR` | ✅ |
+
+### File Operations
+
+| Statement | Syntax Example | Status |
+|-----------|----------------|--------|
+| OPEN | `OPEN INPUT file`, `OPEN OUTPUT file`, `OPEN I-O file` | ✅ |
+| CLOSE | `CLOSE file-1 file-2` | ✅ |
+| READ | `READ file AT END ... NOT AT END ... END-READ` | ✅ |
+| READ KEY | `READ file KEY IS key-field INVALID KEY ...` | ✅ |
+| WRITE | `WRITE record-name` | ✅ |
+| REWRITE | `REWRITE record-name` | ✅ |
+| DELETE | `DELETE file-name INVALID KEY ...` | ✅ |
+| START | `START file KEY >= key-field` | ✅ |
+| SORT | `SORT file ON ASCENDING KEY ... USING ... GIVING ...` | ✅ |
+| MERGE | `MERGE file ON ASCENDING KEY ... USING ... GIVING ...` | ✅ |
+| RELEASE | `RELEASE sort-record` | ✅ |
+| RETURN | `RETURN sort-file AT END ...` | ✅ |
+
+### Table Handling
+
+| Feature | Syntax Example | Status |
+|---------|----------------|--------|
+| SEARCH | `SEARCH table AT END ... WHEN cond ... END-SEARCH` | ✅ |
+| SEARCH ALL | `SEARCH ALL table WHEN key = value ...` | ✅ |
+| OCCURS | `OCCURS 100 TIMES` | ✅ |
+| OCCURS DEPENDING ON | `OCCURS 1 TO 100 DEPENDING ON WS-SIZE` | ✅ |
+| INDEXED BY | `INDEXED BY IDX-1` | ✅ |
+| ASCENDING KEY | `ASCENDING KEY IS field-name` | ✅ |
+
+### File Organizations
+
+| Type | Status | Notes |
+|------|--------|-------|
+| SEQUENTIAL | ✅ | Line sequential access |
+| INDEXED | ✅ | Key-based access via IndexedDB |
+| RELATIVE | ⚠️ | Parsed, limited support |
+
+### Figurative Constants
+
+| Constant | Status |
+|----------|--------|
+| SPACES / SPACE | ✅ |
+| ZEROS / ZEROES / ZERO | ✅ |
+| LOW-VALUES | ✅ |
+| HIGH-VALUES | ✅ |
+| QUOTES | ✅ |
+
+### Legend
+
+| Symbol | Meaning |
+|--------|---------|
+| ✅ | Fully implemented |
+| ⚠️ | Partially implemented or parsed only |
+| ❌ | Not implemented |
+
+### Not Yet Implemented
+
+| Feature | Standard | Notes |
+|---------|----------|-------|
+| CALL / CANCEL | COBOL-85 | Subprogram calls |
+| COPY | COBOL-74 | Copybook inclusion |
+| COPY REPLACING | COBOL-85 | Copybook with substitution |
+| LINAGE | COBOL-74 | Print page control |
+| WRITE ADVANCING | COBOL-68 | Printer line control |
+| DECLARATIVES | COBOL-85 | Error handling procedures |
+| ALTER | COBOL-68 | Dynamic GO TO modification (obsolete) |
 
 ### Screen Control (IBM 3270 Extensions)
 

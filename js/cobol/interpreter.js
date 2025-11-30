@@ -1364,6 +1364,21 @@ export class Interpreter {
             case NodeType.RETURN:
                 await this.executeReturn(stmt);
                 break;
+            case NodeType.STRING:
+                this.executeString(stmt);
+                break;
+            case NodeType.UNSTRING:
+                this.executeUnstring(stmt);
+                break;
+            case NodeType.INSPECT:
+                this.executeInspect(stmt);
+                break;
+            case NodeType.SEARCH:
+                await this.executeSearch(stmt);
+                break;
+            case NodeType.SET:
+                this.executeSet(stmt);
+                break;
         }
     }
 
@@ -2316,6 +2331,12 @@ export class Interpreter {
             case NodeType.IDENTIFIER:
                 return this.runtime.getValue(expr.name) || '';
 
+            case NodeType.SUBSCRIPT:
+                return this.evaluateSubscript(expr);
+
+            case NodeType.REFERENCE_MOD:
+                return this.evaluateReferenceMod(expr);
+
             case NodeType.FIGURATIVE_CONSTANT:
                 switch (expr.value) {
                     case 'SPACES': return ' ';
@@ -2335,6 +2356,78 @@ export class Interpreter {
             default:
                 return '';
         }
+    }
+
+    /**
+     * Evaluate subscripted variable (e.g., TABLE(1) or TABLE(I))
+     */
+    evaluateSubscript(expr) {
+        // Get subscript values
+        const subscripts = expr.subscripts.map(s => this.evaluateNumeric(s));
+
+        // For now, handle single-dimension tables
+        // The subscripted variable name would be TABLE(1), TABLE(2), etc.
+        // We need to find the corresponding element in the table
+
+        // Simple approach: look for variable with subscript suffix
+        // In real COBOL, tables are contiguous memory - we simulate with naming
+        const baseName = expr.name;
+        const subscript = subscripts[0] || 1;
+
+        // Try to find the subscripted element
+        // First check if there's a variable with this exact subscripted name
+        const subscriptedName = `${baseName}(${subscript})`;
+        let value = this.runtime.getValue(subscriptedName);
+        if (value !== null) {
+            return value;
+        }
+
+        // Otherwise, try to access as an array element
+        // Get the base variable and calculate offset based on child structure
+        const baseVar = this.runtime.getVariable(baseName);
+        if (baseVar && baseVar.occurs) {
+            // For OCCURS, we need to access the nth occurrence
+            // This is a simplified implementation
+            const fullValue = baseVar.getValue();
+            const elementSize = baseVar.picInfo?.length || 1;
+            const startPos = (subscript - 1) * elementSize;
+            return fullValue.substring(startPos, startPos + elementSize);
+        }
+
+        return this.runtime.getValue(baseName) || '';
+    }
+
+    /**
+     * Evaluate reference modification (e.g., VAR(1:5))
+     */
+    evaluateReferenceMod(expr) {
+        // Get base value
+        let baseValue;
+        if (expr.subscripts) {
+            // Has subscripts before reference mod: TABLE(1)(2:3)
+            baseValue = this.evaluateSubscript({
+                type: NodeType.SUBSCRIPT,
+                name: expr.name,
+                subscripts: expr.subscripts
+            });
+        } else {
+            baseValue = this.runtime.getValue(expr.name) || '';
+        }
+
+        // Get start position (1-based in COBOL)
+        const start = this.evaluateNumeric(expr.start);
+        const startPos = start - 1; // Convert to 0-based
+
+        // Get length (optional - if not specified, to end of string)
+        let length;
+        if (expr.length) {
+            length = this.evaluateNumeric(expr.length);
+        } else {
+            length = baseValue.length - startPos;
+        }
+
+        // Extract substring
+        return String(baseValue).substring(startPos, startPos + length);
     }
 
     /**
@@ -2500,6 +2593,455 @@ export class Interpreter {
      */
     isWaitingForInput() {
         return this.runtime.waitingForInput;
+    }
+
+    /**
+     * Execute STRING statement
+     * Concatenates multiple source strings into a destination
+     */
+    executeString(stmt) {
+        let result = '';
+        let overflow = false;
+        const destVar = this.runtime.getVariable(stmt.into);
+        const destLength = destVar ? destVar.picInfo.length : 0;
+
+        // Get starting position from pointer (1-based in COBOL)
+        let pointer = stmt.pointer ? this.runtime.getNumericValue(stmt.pointer) : 1;
+        let startPos = pointer - 1; // Convert to 0-based
+
+        // Get current destination value for partial update
+        let destValue = destVar ? destVar.getValue() : '';
+
+        // Process each source
+        for (const source of stmt.sources) {
+            let sourceValue = this.evaluateExpression(source.value);
+            sourceValue = String(sourceValue);
+
+            // Apply delimiter if specified
+            if (source.delimiter) {
+                if (source.delimiter === 'SIZE') {
+                    // Use full size (no trimming)
+                } else {
+                    // Find delimiter and truncate
+                    const delimValue = this.evaluateExpression(source.delimiter);
+                    const delimPos = sourceValue.indexOf(String(delimValue));
+                    if (delimPos !== -1) {
+                        sourceValue = sourceValue.substring(0, delimPos);
+                    }
+                }
+            }
+
+            // Append to result
+            for (const char of sourceValue) {
+                if (startPos >= destLength) {
+                    overflow = true;
+                    break;
+                }
+                // Replace character at position
+                destValue = destValue.substring(0, startPos) + char + destValue.substring(startPos + 1);
+                startPos++;
+            }
+
+            if (overflow) break;
+        }
+
+        // Update pointer variable
+        if (stmt.pointer) {
+            this.runtime.setVariable(stmt.pointer, startPos + 1); // Back to 1-based
+        }
+
+        // Update destination
+        this.runtime.setVariable(stmt.into, destValue);
+
+        // Execute overflow/not overflow handlers
+        if (overflow && stmt.onOverflow.length > 0) {
+            for (const s of stmt.onOverflow) {
+                this.executeStatement(s);
+            }
+        } else if (!overflow && stmt.notOnOverflow.length > 0) {
+            for (const s of stmt.notOnOverflow) {
+                this.executeStatement(s);
+            }
+        }
+    }
+
+    /**
+     * Execute UNSTRING statement
+     * Splits a source string into multiple destination fields
+     */
+    executeUnstring(stmt) {
+        let sourceValue = this.runtime.getValue(stmt.source);
+        sourceValue = String(sourceValue);
+
+        let overflow = false;
+        let fieldCount = 0;
+
+        // Get starting position from pointer (1-based in COBOL)
+        let pointer = stmt.pointer ? this.runtime.getNumericValue(stmt.pointer) : 1;
+        let position = pointer - 1; // Convert to 0-based
+
+        // Process each destination
+        for (const dest of stmt.destinations) {
+            if (position >= sourceValue.length) {
+                overflow = true;
+                break;
+            }
+
+            let endPos = sourceValue.length;
+            let foundDelim = null;
+
+            // Find the nearest delimiter
+            for (const delim of stmt.delimiters) {
+                const delimValue = String(this.evaluateExpression(delim.value));
+                let searchPos = position;
+
+                if (delim.all) {
+                    // ALL means treat consecutive delimiters as one
+                    let idx = sourceValue.indexOf(delimValue, searchPos);
+                    if (idx !== -1 && idx < endPos) {
+                        endPos = idx;
+                        foundDelim = delimValue;
+                    }
+                } else {
+                    let idx = sourceValue.indexOf(delimValue, searchPos);
+                    if (idx !== -1 && idx < endPos) {
+                        endPos = idx;
+                        foundDelim = delimValue;
+                    }
+                }
+            }
+
+            // Extract the field value
+            const fieldValue = sourceValue.substring(position, endPos);
+            this.runtime.setVariable(dest.into, fieldValue);
+            fieldCount++;
+
+            // Store delimiter if requested
+            if (dest.delimiterIn && foundDelim !== null) {
+                this.runtime.setVariable(dest.delimiterIn, foundDelim);
+            }
+
+            // Store count if requested
+            if (dest.countIn) {
+                this.runtime.setVariable(dest.countIn, fieldValue.length);
+            }
+
+            // Move past the field and delimiter
+            position = endPos + (foundDelim ? foundDelim.length : 0);
+
+            // Skip consecutive delimiters if ALL was specified
+            for (const delim of stmt.delimiters) {
+                if (delim.all) {
+                    const delimValue = String(this.evaluateExpression(delim.value));
+                    while (sourceValue.substring(position, position + delimValue.length) === delimValue) {
+                        position += delimValue.length;
+                    }
+                }
+            }
+        }
+
+        // Update pointer variable
+        if (stmt.pointer) {
+            this.runtime.setVariable(stmt.pointer, position + 1); // Back to 1-based
+        }
+
+        // Update tallying variable
+        if (stmt.tallying) {
+            this.runtime.setVariable(stmt.tallying, fieldCount);
+        }
+
+        // Execute overflow/not overflow handlers
+        if (overflow && stmt.onOverflow.length > 0) {
+            for (const s of stmt.onOverflow) {
+                this.executeStatement(s);
+            }
+        } else if (!overflow && stmt.notOnOverflow.length > 0) {
+            for (const s of stmt.notOnOverflow) {
+                this.executeStatement(s);
+            }
+        }
+    }
+
+    /**
+     * Execute INSPECT statement
+     * Counts and/or replaces characters in a string
+     */
+    executeInspect(stmt) {
+        let value = String(this.runtime.getValue(stmt.target));
+
+        switch (stmt.mode) {
+            case 'TALLYING':
+                this.executeInspectTallying(stmt, value);
+                break;
+
+            case 'REPLACING':
+                value = this.executeInspectReplacing(stmt, value);
+                this.runtime.setVariable(stmt.target, value);
+                break;
+
+            case 'TALLYING_REPLACING':
+                this.executeInspectTallying(stmt, value);
+                value = this.executeInspectReplacing(stmt, value);
+                this.runtime.setVariable(stmt.target, value);
+                break;
+
+            case 'CONVERTING':
+                value = this.executeInspectConverting(stmt, value);
+                this.runtime.setVariable(stmt.target, value);
+                break;
+        }
+    }
+
+    /**
+     * Execute INSPECT TALLYING
+     */
+    executeInspectTallying(stmt, value) {
+        for (const tally of stmt.tallying) {
+            let count = 0;
+            let searchValue = value;
+
+            // Apply BEFORE/AFTER constraints
+            if (tally.before) {
+                const beforeStr = String(this.evaluateExpression(tally.before));
+                const idx = searchValue.indexOf(beforeStr);
+                if (idx !== -1) {
+                    searchValue = searchValue.substring(0, idx);
+                }
+            }
+            if (tally.after) {
+                const afterStr = String(this.evaluateExpression(tally.after));
+                const idx = searchValue.indexOf(afterStr);
+                if (idx !== -1) {
+                    searchValue = searchValue.substring(idx + afterStr.length);
+                }
+            }
+
+            if (tally.type === 'CHARACTERS') {
+                count = searchValue.length;
+            } else if (tally.type === 'ALL' || tally.type === 'LEADING') {
+                const pattern = String(this.evaluateExpression(tally.pattern));
+                if (pattern.length > 0) {
+                    if (tally.type === 'ALL') {
+                        // Count all occurrences
+                        let pos = 0;
+                        while ((pos = searchValue.indexOf(pattern, pos)) !== -1) {
+                            count++;
+                            pos += pattern.length;
+                        }
+                    } else {
+                        // LEADING - count only at the beginning
+                        let pos = 0;
+                        while (searchValue.substring(pos, pos + pattern.length) === pattern) {
+                            count++;
+                            pos += pattern.length;
+                        }
+                    }
+                }
+            }
+
+            // Add to counter variable
+            const currentCount = this.runtime.getNumericValue(tally.counter);
+            this.runtime.setVariable(tally.counter, currentCount + count);
+        }
+    }
+
+    /**
+     * Execute INSPECT REPLACING
+     */
+    executeInspectReplacing(stmt, value) {
+        for (const repl of stmt.replacing) {
+            const byValue = String(this.evaluateExpression(repl.by));
+
+            // Determine search range
+            let startIdx = 0;
+            let endIdx = value.length;
+
+            if (repl.before) {
+                const beforeStr = String(this.evaluateExpression(repl.before));
+                const idx = value.indexOf(beforeStr);
+                if (idx !== -1) {
+                    endIdx = idx;
+                }
+            }
+            if (repl.after) {
+                const afterStr = String(this.evaluateExpression(repl.after));
+                const idx = value.indexOf(afterStr);
+                if (idx !== -1) {
+                    startIdx = idx + afterStr.length;
+                }
+            }
+
+            const prefix = value.substring(0, startIdx);
+            let middle = value.substring(startIdx, endIdx);
+            const suffix = value.substring(endIdx);
+
+            if (repl.type === 'CHARACTERS') {
+                // Replace all characters with first char of replacement
+                const replChar = byValue.charAt(0) || ' ';
+                middle = replChar.repeat(middle.length);
+            } else {
+                const pattern = String(this.evaluateExpression(repl.pattern));
+                if (pattern.length > 0) {
+                    if (repl.type === 'ALL') {
+                        // Replace all occurrences
+                        while (middle.includes(pattern)) {
+                            middle = middle.replace(pattern, byValue);
+                        }
+                    } else if (repl.type === 'LEADING') {
+                        // Replace only leading occurrences
+                        while (middle.startsWith(pattern)) {
+                            middle = byValue + middle.substring(pattern.length);
+                        }
+                    } else if (repl.type === 'FIRST') {
+                        // Replace only the first occurrence
+                        middle = middle.replace(pattern, byValue);
+                    }
+                }
+            }
+
+            value = prefix + middle + suffix;
+        }
+
+        return value;
+    }
+
+    /**
+     * Execute INSPECT CONVERTING
+     */
+    executeInspectConverting(stmt, value) {
+        const fromChars = String(this.evaluateExpression(stmt.converting.from));
+        const toChars = String(this.evaluateExpression(stmt.converting.to));
+
+        // Determine search range
+        let startIdx = 0;
+        let endIdx = value.length;
+
+        if (stmt.converting.before) {
+            const beforeStr = String(this.evaluateExpression(stmt.converting.before));
+            const idx = value.indexOf(beforeStr);
+            if (idx !== -1) {
+                endIdx = idx;
+            }
+        }
+        if (stmt.converting.after) {
+            const afterStr = String(this.evaluateExpression(stmt.converting.after));
+            const idx = value.indexOf(afterStr);
+            if (idx !== -1) {
+                startIdx = idx + afterStr.length;
+            }
+        }
+
+        // Convert characters in the range
+        let result = '';
+        for (let i = 0; i < value.length; i++) {
+            const char = value.charAt(i);
+            if (i >= startIdx && i < endIdx) {
+                const fromIdx = fromChars.indexOf(char);
+                if (fromIdx !== -1 && fromIdx < toChars.length) {
+                    result += toChars.charAt(fromIdx);
+                } else {
+                    result += char;
+                }
+            } else {
+                result += char;
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Execute SEARCH statement
+     * Performs linear (SEARCH) or binary (SEARCH ALL) search on a table
+     */
+    async executeSearch(stmt) {
+        // Get the table variable (must have OCCURS clause)
+        const tableVar = this.runtime.getVariable(stmt.table);
+        if (!tableVar) {
+            // Execute AT END if table not found
+            for (const s of stmt.atEnd) {
+                await this.executeStatement(s);
+            }
+            return;
+        }
+
+        // For now, we'll implement a simple linear search
+        // Full OCCURS/INDEXED BY support would require more table structure
+        const indexVar = stmt.varying || (stmt.table + '-IDX');
+        let currentIndex = this.runtime.getNumericValue(indexVar);
+
+        // Assume table has a reasonable max size
+        const maxIterations = 1000;
+
+        for (let iteration = 0; iteration < maxIterations; iteration++) {
+            // Check each WHEN condition
+            for (const whenClause of stmt.whenClauses) {
+                if (this.evaluateCondition(whenClause.condition)) {
+                    // Condition matched - execute statements
+                    for (const s of whenClause.statements) {
+                        await this.executeStatement(s);
+                    }
+                    return; // Exit search after first match
+                }
+            }
+
+            // Increment index for next iteration
+            currentIndex++;
+            this.runtime.setVariable(indexVar, currentIndex);
+
+            // Check for end of table (simplified - would need OCCURS limit)
+            if (currentIndex > maxIterations) {
+                break;
+            }
+        }
+
+        // No match found - execute AT END
+        for (const s of stmt.atEnd) {
+            await this.executeStatement(s);
+        }
+    }
+
+    /**
+     * Execute SET statement
+     * Sets index values or condition names
+     */
+    executeSet(stmt) {
+        for (const target of stmt.targets) {
+            switch (stmt.operation) {
+                case 'TO':
+                    const toValue = this.evaluateExpression(stmt.value);
+                    // Check if it's a condition name (88 level)
+                    if (this.runtime.isConditionName(target)) {
+                        // SET condition TO TRUE/FALSE
+                        const condition = this.runtime.conditionNames.get(this.runtime.normalizeVarName(target));
+                        if (condition && toValue === true) {
+                            // Set the parent variable to the first value of the condition
+                            if (condition.values.length > 0) {
+                                const firstValue = condition.values[0].value;
+                                const actualValue = this.runtime.getConditionValueAsString(firstValue,
+                                    this.runtime.getVariable(condition.parentVar));
+                                this.runtime.setVariable(condition.parentVar, actualValue);
+                            }
+                        }
+                    } else {
+                        // Regular SET TO value
+                        this.runtime.setVariable(target, toValue);
+                    }
+                    break;
+
+                case 'UP':
+                    const upValue = this.evaluateNumeric(stmt.value);
+                    const currentUp = this.runtime.getNumericValue(target);
+                    this.runtime.setVariable(target, currentUp + upValue);
+                    break;
+
+                case 'DOWN':
+                    const downValue = this.evaluateNumeric(stmt.value);
+                    const currentDown = this.runtime.getNumericValue(target);
+                    this.runtime.setVariable(target, currentDown - downValue);
+                    break;
+            }
+        }
     }
 }
 

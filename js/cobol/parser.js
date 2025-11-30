@@ -55,8 +55,15 @@ export const NodeType = {
     MERGE: 'MERGE',
     RELEASE: 'RELEASE',
     RETURN: 'RETURN',
+    STRING: 'STRING',
+    UNSTRING: 'UNSTRING',
+    INSPECT: 'INSPECT',
+    SEARCH: 'SEARCH',
+    SET: 'SET',
 
     // Expressions
+    SUBSCRIPT: 'SUBSCRIPT',
+    REFERENCE_MOD: 'REFERENCE_MOD',
     IDENTIFIER: 'IDENTIFIER',
     LITERAL: 'LITERAL',
     BINARY_EXPR: 'BINARY_EXPR',
@@ -508,6 +515,11 @@ export class Parser {
             pic: null,
             value: null,
             redefines: null,
+            occurs: null,           // Number of occurrences
+            occursDependingOn: null, // Variable determining actual size (DEPENDING ON)
+            indexedBy: [],           // Index names (INDEXED BY)
+            ascendingKey: null,      // Key for SEARCH ALL
+            descendingKey: null,     // Key for SEARCH ALL
             children: [],
             conditionNames: [],  // 88 level condition names attached to this item
         });
@@ -537,6 +549,50 @@ export class Parser {
                 this.advance();
                 if (this.check(TokenType.IDENTIFIER)) {
                     node.redefines = this.advance().value;
+                }
+            } else if (this.check(TokenType.OCCURS)) {
+                this.advance();
+                // OCCURS n TIMES or OCCURS n TO m TIMES DEPENDING ON var
+                if (this.check(TokenType.NUMBER)) {
+                    node.occurs = parseInt(this.advance().value);
+                }
+                // Optional TO m for variable-length tables
+                if (this.check(TokenType.TO)) {
+                    this.advance();
+                    if (this.check(TokenType.NUMBER)) {
+                        node.occursMax = parseInt(this.advance().value);
+                    }
+                }
+                this.optional(TokenType.TIMES);
+                // DEPENDING ON
+                if (this.check(TokenType.DEPENDING)) {
+                    this.advance();
+                    this.optional(TokenType.ON);
+                    if (this.check(TokenType.IDENTIFIER)) {
+                        node.occursDependingOn = this.advance().value;
+                    }
+                }
+                // ASCENDING/DESCENDING KEY
+                while (this.checkAny(TokenType.ASCENDING, TokenType.DESCENDING)) {
+                    const order = this.advance().type;
+                    this.optional(TokenType.KEY);
+                    this.optional(TokenType.IS);
+                    if (this.check(TokenType.IDENTIFIER)) {
+                        const keyName = this.advance().value;
+                        if (order === TokenType.ASCENDING) {
+                            node.ascendingKey = keyName;
+                        } else {
+                            node.descendingKey = keyName;
+                        }
+                    }
+                }
+                // INDEXED BY
+                if (this.check(TokenType.INDEXED)) {
+                    this.advance();
+                    this.optional(TokenType.BY);
+                    while (this.check(TokenType.IDENTIFIER)) {
+                        node.indexedBy.push(this.advance().value);
+                    }
                 }
             } else {
                 this.advance();
@@ -773,7 +829,9 @@ export class Parser {
             TokenType.GO, TokenType.STOP, TokenType.EXIT, TokenType.INITIALIZE,
             TokenType.OPEN, TokenType.CLOSE, TokenType.READ, TokenType.WRITE,
             TokenType.REWRITE, TokenType.DELETE, TokenType.START, TokenType.CONTINUE,
-            TokenType.SORT, TokenType.MERGE, TokenType.RELEASE, TokenType.RETURN
+            TokenType.SORT, TokenType.MERGE, TokenType.RELEASE, TokenType.RETURN,
+            TokenType.STRING, TokenType.UNSTRING, TokenType.INSPECT,
+            TokenType.SEARCH, TokenType.SET
         );
     }
 
@@ -808,6 +866,11 @@ export class Parser {
             case TokenType.MERGE: return this.parseMerge();
             case TokenType.RELEASE: return this.parseRelease();
             case TokenType.RETURN: return this.parseReturn();
+            case TokenType.STRING: return this.parseString();
+            case TokenType.UNSTRING: return this.parseUnstring();
+            case TokenType.INSPECT: return this.parseInspect();
+            case TokenType.SEARCH: return this.parseSearch();
+            case TokenType.SET: return this.parseSet();
             case TokenType.CONTINUE:
                 this.advance();
                 this.skipPeriod();
@@ -2242,6 +2305,512 @@ export class Parser {
     }
 
     /**
+     * Parse STRING statement
+     * STRING source-1 [DELIMITED BY delimiter-1] source-2 [DELIMITED BY delimiter-2]...
+     *        INTO destination [WITH POINTER pointer-var]
+     *        [ON OVERFLOW statements] [NOT ON OVERFLOW statements]
+     *        [END-STRING]
+     */
+    parseString() {
+        this.expect(TokenType.STRING);
+
+        const node = new ASTNode(NodeType.STRING, {
+            sources: [],      // Array of {value, delimiter}
+            into: null,
+            pointer: null,
+            onOverflow: [],
+            notOnOverflow: [],
+        });
+
+        // Parse source items with delimiters
+        while (!this.checkAny(TokenType.INTO, TokenType.DOT, TokenType.EOF)) {
+            const source = { value: null, delimiter: null };
+
+            // Source value
+            source.value = this.parseExpression();
+            if (!source.value) break;
+
+            // Optional DELIMITED BY
+            if (this.check(TokenType.DELIMITED)) {
+                this.advance();
+                this.optional(TokenType.BY);
+                if (this.check(TokenType.SIZE)) {
+                    this.advance();
+                    source.delimiter = 'SIZE';
+                } else {
+                    source.delimiter = this.parseExpression();
+                }
+            }
+
+            node.sources.push(source);
+        }
+
+        // INTO destination
+        if (this.check(TokenType.INTO)) {
+            this.advance();
+            if (this.check(TokenType.IDENTIFIER)) {
+                node.into = this.advance().value;
+            }
+        }
+
+        // WITH POINTER
+        if (this.check(TokenType.WITH)) {
+            this.advance();
+        }
+        if (this.check(TokenType.POINTER)) {
+            this.advance();
+            if (this.check(TokenType.IDENTIFIER)) {
+                node.pointer = this.advance().value;
+            }
+        }
+
+        // ON OVERFLOW / NOT ON OVERFLOW
+        while (!this.checkAny(TokenType.END_STRING, TokenType.DOT, TokenType.EOF)) {
+            if (this.check(TokenType.NOT) && this.peek()?.type === TokenType.ON) {
+                this.advance(); // NOT
+                this.advance(); // ON
+                this.optional(TokenType.OVERFLOW);
+                while (!this.checkAny(TokenType.END_STRING, TokenType.DOT, TokenType.EOF)) {
+                    if (this.isStatementStart()) {
+                        const stmt = this.parseStatement();
+                        if (stmt) node.notOnOverflow.push(stmt);
+                    } else {
+                        break;
+                    }
+                }
+            } else if (this.check(TokenType.ON) || this.check(TokenType.OVERFLOW)) {
+                this.optional(TokenType.ON);
+                this.optional(TokenType.OVERFLOW);
+                while (!this.checkAny(TokenType.NOT, TokenType.END_STRING, TokenType.DOT, TokenType.EOF)) {
+                    if (this.isStatementStart()) {
+                        const stmt = this.parseStatement();
+                        if (stmt) node.onOverflow.push(stmt);
+                    } else {
+                        break;
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+
+        this.optional(TokenType.END_STRING);
+        this.skipPeriod();
+        return node;
+    }
+
+    /**
+     * Parse UNSTRING statement
+     * UNSTRING source DELIMITED BY [ALL] delimiter-1 [OR [ALL] delimiter-2]...
+     *          INTO dest-1 [DELIMITER IN delim-dest-1] [COUNT IN count-dest-1]
+     *               dest-2 ...
+     *          [WITH POINTER pointer-var]
+     *          [TALLYING IN tally-var]
+     *          [ON OVERFLOW statements] [NOT ON OVERFLOW statements]
+     *          [END-UNSTRING]
+     */
+    parseUnstring() {
+        this.expect(TokenType.UNSTRING);
+
+        const node = new ASTNode(NodeType.UNSTRING, {
+            source: null,
+            delimiters: [],   // Array of {value, all: boolean}
+            destinations: [], // Array of {into, delimiterIn, countIn}
+            pointer: null,
+            tallying: null,
+            onOverflow: [],
+            notOnOverflow: [],
+        });
+
+        // Source string
+        if (this.check(TokenType.IDENTIFIER)) {
+            node.source = this.advance().value;
+        }
+
+        // DELIMITED BY
+        if (this.check(TokenType.DELIMITED)) {
+            this.advance();
+            this.optional(TokenType.BY);
+
+            // Parse delimiters (can have multiple with OR)
+            do {
+                const delim = { value: null, all: false };
+                if (this.check(TokenType.ALL)) {
+                    this.advance();
+                    delim.all = true;
+                }
+                delim.value = this.parseExpression();
+                node.delimiters.push(delim);
+            } while (this.check(TokenType.OR) && this.advance());
+        }
+
+        // INTO destinations
+        if (this.check(TokenType.INTO)) {
+            this.advance();
+
+            while (this.check(TokenType.IDENTIFIER)) {
+                const dest = { into: null, delimiterIn: null, countIn: null };
+                dest.into = this.advance().value;
+
+                // DELIMITER IN
+                if (this.check(TokenType.DELIMITER)) {
+                    this.advance();
+                    this.optional(TokenType.IN);
+                    if (this.check(TokenType.IDENTIFIER)) {
+                        dest.delimiterIn = this.advance().value;
+                    }
+                }
+
+                // COUNT IN
+                if (this.check(TokenType.COUNT)) {
+                    this.advance();
+                    this.optional(TokenType.IN);
+                    if (this.check(TokenType.IDENTIFIER)) {
+                        dest.countIn = this.advance().value;
+                    }
+                }
+
+                node.destinations.push(dest);
+            }
+        }
+
+        // WITH POINTER
+        if (this.check(TokenType.WITH)) {
+            this.advance();
+        }
+        if (this.check(TokenType.POINTER)) {
+            this.advance();
+            if (this.check(TokenType.IDENTIFIER)) {
+                node.pointer = this.advance().value;
+            }
+        }
+
+        // TALLYING IN
+        if (this.check(TokenType.TALLYING)) {
+            this.advance();
+            this.optional(TokenType.IN);
+            if (this.check(TokenType.IDENTIFIER)) {
+                node.tallying = this.advance().value;
+            }
+        }
+
+        // ON OVERFLOW / NOT ON OVERFLOW
+        while (!this.checkAny(TokenType.END_UNSTRING, TokenType.DOT, TokenType.EOF)) {
+            if (this.check(TokenType.NOT) && this.peek()?.type === TokenType.ON) {
+                this.advance(); // NOT
+                this.advance(); // ON
+                this.optional(TokenType.OVERFLOW);
+                while (!this.checkAny(TokenType.END_UNSTRING, TokenType.DOT, TokenType.EOF)) {
+                    if (this.isStatementStart()) {
+                        const stmt = this.parseStatement();
+                        if (stmt) node.notOnOverflow.push(stmt);
+                    } else {
+                        break;
+                    }
+                }
+            } else if (this.check(TokenType.ON) || this.check(TokenType.OVERFLOW)) {
+                this.optional(TokenType.ON);
+                this.optional(TokenType.OVERFLOW);
+                while (!this.checkAny(TokenType.NOT, TokenType.END_UNSTRING, TokenType.DOT, TokenType.EOF)) {
+                    if (this.isStatementStart()) {
+                        const stmt = this.parseStatement();
+                        if (stmt) node.onOverflow.push(stmt);
+                    } else {
+                        break;
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+
+        this.optional(TokenType.END_UNSTRING);
+        this.skipPeriod();
+        return node;
+    }
+
+    /**
+     * Parse INSPECT statement
+     * INSPECT identifier TALLYING tally-var FOR {ALL|LEADING|CHARACTERS} pattern [BEFORE|AFTER INITIAL delimiter]
+     * INSPECT identifier REPLACING {ALL|LEADING|FIRST|CHARACTERS} pattern BY replacement [BEFORE|AFTER INITIAL delimiter]
+     * INSPECT identifier CONVERTING from-chars TO to-chars [BEFORE|AFTER INITIAL delimiter]
+     */
+    parseInspect() {
+        this.expect(TokenType.INSPECT);
+
+        const node = new ASTNode(NodeType.INSPECT, {
+            target: null,
+            mode: null,       // 'TALLYING', 'REPLACING', 'CONVERTING', 'TALLYING_REPLACING'
+            tallying: [],     // Array of {counter, type, pattern, before, after}
+            replacing: [],    // Array of {type, pattern, by, before, after}
+            converting: null, // {from, to, before, after}
+        });
+
+        // Target identifier
+        if (this.check(TokenType.IDENTIFIER)) {
+            node.target = this.advance().value;
+        }
+
+        // TALLYING
+        if (this.check(TokenType.TALLYING)) {
+            this.advance();
+            node.mode = 'TALLYING';
+
+            // Counter variable
+            let counter = null;
+            if (this.check(TokenType.IDENTIFIER)) {
+                counter = this.advance().value;
+            }
+
+            // FOR
+            this.optional(TokenType.FOR);
+
+            // Parse tallying specifications
+            while (this.checkAny(TokenType.ALL, TokenType.LEADING, TokenType.IDENTIFIER)) {
+                const tally = { counter, type: 'ALL', pattern: null, before: null, after: null };
+
+                if (this.check(TokenType.ALL)) {
+                    this.advance();
+                    tally.type = 'ALL';
+                } else if (this.check(TokenType.LEADING)) {
+                    this.advance();
+                    tally.type = 'LEADING';
+                } else if (this.check(TokenType.IDENTIFIER) && this.current().value === 'CHARACTERS') {
+                    this.advance();
+                    tally.type = 'CHARACTERS';
+                    // CHARACTERS doesn't have a pattern
+                    node.tallying.push(tally);
+                    continue;
+                }
+
+                // Pattern to count
+                tally.pattern = this.parseExpression();
+
+                // BEFORE/AFTER INITIAL
+                if (this.check(TokenType.BEFORE)) {
+                    this.advance();
+                    this.optional(TokenType.INITIAL);
+                    tally.before = this.parseExpression();
+                }
+                if (this.check(TokenType.AFTER)) {
+                    this.advance();
+                    this.optional(TokenType.INITIAL);
+                    tally.after = this.parseExpression();
+                }
+
+                node.tallying.push(tally);
+
+                // Check for additional tallying specs with FOR
+                if (this.check(TokenType.FOR)) {
+                    this.advance();
+                }
+            }
+        }
+
+        // REPLACING (can be combined with TALLYING)
+        if (this.check(TokenType.REPLACING)) {
+            this.advance();
+            node.mode = node.mode === 'TALLYING' ? 'TALLYING_REPLACING' : 'REPLACING';
+
+            // Parse replacing specifications
+            while (this.checkAny(TokenType.ALL, TokenType.LEADING, TokenType.FIRST, TokenType.IDENTIFIER)) {
+                const repl = { type: 'ALL', pattern: null, by: null, before: null, after: null };
+
+                if (this.check(TokenType.ALL)) {
+                    this.advance();
+                    repl.type = 'ALL';
+                } else if (this.check(TokenType.LEADING)) {
+                    this.advance();
+                    repl.type = 'LEADING';
+                } else if (this.check(TokenType.FIRST)) {
+                    this.advance();
+                    repl.type = 'FIRST';
+                } else if (this.check(TokenType.IDENTIFIER) && this.current().value === 'CHARACTERS') {
+                    this.advance();
+                    repl.type = 'CHARACTERS';
+                }
+
+                // Pattern to replace (except for CHARACTERS which replaces all)
+                if (repl.type !== 'CHARACTERS') {
+                    repl.pattern = this.parseExpression();
+                }
+
+                // BY replacement
+                if (this.check(TokenType.BY)) {
+                    this.advance();
+                    repl.by = this.parseExpression();
+                }
+
+                // BEFORE/AFTER INITIAL
+                if (this.check(TokenType.BEFORE)) {
+                    this.advance();
+                    this.optional(TokenType.INITIAL);
+                    repl.before = this.parseExpression();
+                }
+                if (this.check(TokenType.AFTER)) {
+                    this.advance();
+                    this.optional(TokenType.INITIAL);
+                    repl.after = this.parseExpression();
+                }
+
+                node.replacing.push(repl);
+            }
+        }
+
+        // CONVERTING
+        if (this.check(TokenType.CONVERTING)) {
+            this.advance();
+            node.mode = 'CONVERTING';
+
+            node.converting = { from: null, to: null, before: null, after: null };
+            node.converting.from = this.parseExpression();
+
+            this.expect(TokenType.TO);
+            node.converting.to = this.parseExpression();
+
+            // BEFORE/AFTER INITIAL
+            if (this.check(TokenType.BEFORE)) {
+                this.advance();
+                this.optional(TokenType.INITIAL);
+                node.converting.before = this.parseExpression();
+            }
+            if (this.check(TokenType.AFTER)) {
+                this.advance();
+                this.optional(TokenType.INITIAL);
+                node.converting.after = this.parseExpression();
+            }
+        }
+
+        this.optional(TokenType.END_INSPECT);
+        this.skipPeriod();
+        return node;
+    }
+
+    /**
+     * Parse SEARCH statement
+     * SEARCH table-name [VARYING index-name]
+     *        [AT END statements]
+     *        WHEN condition statements
+     *        [WHEN condition statements]...
+     *        [END-SEARCH]
+     */
+    parseSearch() {
+        this.expect(TokenType.SEARCH);
+
+        const node = new ASTNode(NodeType.SEARCH, {
+            table: null,
+            all: false,       // SEARCH ALL for binary search
+            varying: null,
+            atEnd: [],
+            whenClauses: [],  // Array of {condition, statements}
+        });
+
+        // SEARCH ALL (binary search)
+        if (this.check(TokenType.ALL)) {
+            this.advance();
+            node.all = true;
+        }
+
+        // Table name
+        if (this.check(TokenType.IDENTIFIER)) {
+            node.table = this.advance().value;
+        }
+
+        // VARYING index
+        if (this.check(TokenType.VARYING)) {
+            this.advance();
+            if (this.check(TokenType.IDENTIFIER)) {
+                node.varying = this.advance().value;
+            }
+        }
+
+        // AT END
+        if (this.check(TokenType.AT)) {
+            this.advance();
+            this.expect(TokenType.END);
+            while (!this.checkAny(TokenType.WHEN, TokenType.END_SEARCH, TokenType.DOT, TokenType.EOF)) {
+                if (this.isStatementStart()) {
+                    const stmt = this.parseStatement();
+                    if (stmt) node.atEnd.push(stmt);
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // WHEN clauses
+        while (this.check(TokenType.WHEN)) {
+            this.advance();
+            const whenClause = { condition: null, statements: [] };
+
+            whenClause.condition = this.parseCondition();
+
+            // Parse statements for this WHEN
+            while (!this.checkAny(TokenType.WHEN, TokenType.END_SEARCH, TokenType.DOT, TokenType.EOF)) {
+                if (this.isStatementStart()) {
+                    const stmt = this.parseStatement();
+                    if (stmt) whenClause.statements.push(stmt);
+                } else if (this.check(TokenType.NEXT) && this.peek()?.type === TokenType.SENTENCE) {
+                    // NEXT SENTENCE
+                    this.advance();
+                    this.advance();
+                    break;
+                } else {
+                    break;
+                }
+            }
+
+            node.whenClauses.push(whenClause);
+        }
+
+        this.optional(TokenType.END_SEARCH);
+        this.skipPeriod();
+        return node;
+    }
+
+    /**
+     * Parse SET statement
+     * SET index-name TO value
+     * SET index-name UP BY value
+     * SET index-name DOWN BY value
+     * SET condition-name TO TRUE/FALSE
+     */
+    parseSet() {
+        this.expect(TokenType.SET);
+
+        const node = new ASTNode(NodeType.SET, {
+            targets: [],
+            operation: 'TO',  // 'TO', 'UP', 'DOWN'
+            value: null,
+        });
+
+        // Target(s)
+        while (this.check(TokenType.IDENTIFIER)) {
+            node.targets.push(this.advance().value);
+        }
+
+        // Operation
+        if (this.check(TokenType.TO)) {
+            this.advance();
+            node.operation = 'TO';
+            node.value = this.parseExpression();
+        } else if (this.check(TokenType.IDENTIFIER) && this.current().value === 'UP') {
+            this.advance();
+            this.expect(TokenType.BY);
+            node.operation = 'UP';
+            node.value = this.parseExpression();
+        } else if (this.check(TokenType.IDENTIFIER) && this.current().value === 'DOWN') {
+            this.advance();
+            this.expect(TokenType.BY);
+            node.operation = 'DOWN';
+            node.value = this.parseExpression();
+        }
+
+        this.skipPeriod();
+        return node;
+    }
+
+    /**
      * Parse condition (for IF, UNTIL, etc.)
      */
     parseCondition() {
@@ -2371,7 +2940,62 @@ export class Parser {
             return new ASTNode(NodeType.LITERAL, { value: this.advance().value, dataType: 'number' });
         }
         if (this.check(TokenType.IDENTIFIER)) {
-            return new ASTNode(NodeType.IDENTIFIER, { name: this.advance().value });
+            const name = this.advance().value;
+
+            // Check for subscript (e.g., TABLE(1) or TABLE(I)) or reference modification (e.g., VAR(1:5))
+            if (this.check(TokenType.LPAREN)) {
+                this.advance(); // consume '('
+
+                // Parse first expression (subscript or ref mod start)
+                const first = this.parseSubscriptOrRefMod();
+
+                // Check for colon (reference modification)
+                if (this.check(TokenType.COLON)) {
+                    this.advance(); // consume ':'
+                    const length = this.parseSubscriptOrRefMod();
+                    this.expect(TokenType.RPAREN);
+                    return new ASTNode(NodeType.REFERENCE_MOD, {
+                        name,
+                        start: first,
+                        length: length
+                    });
+                }
+
+                // Multiple subscripts possible (e.g., TABLE(I, J))
+                const subscripts = [first];
+                while (this.check(TokenType.COMMA)) {
+                    this.advance(); // consume ','
+                    subscripts.push(this.parseSubscriptOrRefMod());
+                }
+
+                this.expect(TokenType.RPAREN);
+
+                // Check for reference modification after subscripts (e.g., TABLE(1)(2:3))
+                if (this.check(TokenType.LPAREN)) {
+                    this.advance();
+                    const refStart = this.parseSubscriptOrRefMod();
+                    if (this.check(TokenType.COLON)) {
+                        this.advance();
+                        const refLength = this.parseSubscriptOrRefMod();
+                        this.expect(TokenType.RPAREN);
+                        return new ASTNode(NodeType.REFERENCE_MOD, {
+                            name,
+                            subscripts,
+                            start: refStart,
+                            length: refLength
+                        });
+                    }
+                    // Not a reference mod, backtrack would be complex, treat as error
+                    this.expect(TokenType.RPAREN);
+                }
+
+                return new ASTNode(NodeType.SUBSCRIPT, {
+                    name,
+                    subscripts
+                });
+            }
+
+            return new ASTNode(NodeType.IDENTIFIER, { name });
         }
         if (this.checkAny(TokenType.SPACES, TokenType.SPACE)) {
             this.advance();
@@ -2398,6 +3022,23 @@ export class Parser {
             return new ASTNode(NodeType.LITERAL, { value: false, dataType: 'boolean' });
         }
 
+        return null;
+    }
+
+    /**
+     * Parse subscript or reference modification index
+     * Can be a number, identifier, or arithmetic expression
+     */
+    parseSubscriptOrRefMod() {
+        // Simple number
+        if (this.check(TokenType.NUMBER)) {
+            return new ASTNode(NodeType.LITERAL, { value: parseInt(this.advance().value), dataType: 'number' });
+        }
+        // Identifier (index variable)
+        if (this.check(TokenType.IDENTIFIER)) {
+            return new ASTNode(NodeType.IDENTIFIER, { name: this.advance().value });
+        }
+        // Could be an arithmetic expression - for now, just return null if not recognized
         return null;
     }
 
