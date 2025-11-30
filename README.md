@@ -12,7 +12,7 @@ A web-based COBOL emulator with IBM 029 punch card visualization, running entire
 - **Auto-Detection** - Automatically detects the appropriate dialect from source code
 - **IBM 3270 Screen Control** - Full-screen terminal emulation with positioning and attributes
 - **Punch Card Visualization** - Realistic IBM 029 keypunch simulation with animations
-- **Pedagogical Debug Mode** - Step-by-step execution with variable inspection and French explanations
+- **Pedagogical Debug Mode** - Step-by-step execution with breakpoints, variable inspection, and French explanations
 - **Subprograms & Copybooks** - CALL/CANCEL statements and COPY with REPLACING
 - **Dot-Matrix Printer** - Retro green-bar paper output with tractor feed holes
 - **File I/O** - Simulated SEQUENTIAL and INDEXED file operations via IndexedDB
@@ -38,7 +38,7 @@ HOPPER implements a comprehensive subset of COBOL-68 through COBOL-85:
 
 | Category | Features |
 |----------|----------|
-| **Data Division** | Levels 01-88, PIC, VALUE, REDEFINES, OCCURS, INDEXED BY |
+| **Data Division** | Levels 01-88, PIC (including edited Z/*/,/.), VALUE (ALL), FILLER, REDEFINES, OCCURS, INDEXED BY |
 | **Arithmetic** | ADD, SUBTRACT, MULTIPLY, DIVIDE, COMPUTE |
 | **Control Flow** | IF/ELSE, EVALUATE, PERFORM (TIMES/UNTIL/VARYING), GO TO |
 | **String Handling** | STRING, UNSTRING, INSPECT, Reference Modification `VAR(1:5)` |
