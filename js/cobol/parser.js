@@ -251,10 +251,78 @@ export class Parser {
         this.skipPeriod();
 
         const node = new ASTNode(NodeType.ENVIRONMENT_DIVISION, {
+            sourceComputer: null,
+            objectComputer: null,
+            specialNames: null,
             fileControl: [],
         });
 
-        // INPUT-OUTPUT SECTION
+        // CONFIGURATION SECTION (optional)
+        if (this.check(TokenType.CONFIGURATION)) {
+            this.advance();
+            this.expect(TokenType.SECTION);
+            this.skipPeriod();
+
+            // SOURCE-COMPUTER (optional)
+            if (this.check(TokenType.SOURCE_COMPUTER)) {
+                this.advance();
+                this.skipPeriod();
+                // Read computer name (everything until next keyword or period)
+                let computerName = '';
+                while (!this.check(TokenType.DOT) &&
+                       !this.check(TokenType.OBJECT_COMPUTER) &&
+                       !this.check(TokenType.SPECIAL_NAMES) &&
+                       !this.check(TokenType.INPUT_OUTPUT) &&
+                       !this.check(TokenType.DATA) &&
+                       !this.check(TokenType.PROCEDURE) &&
+                       !this.check(TokenType.EOF)) {
+                    computerName += (computerName ? ' ' : '') + this.advance().value;
+                }
+                node.sourceComputer = computerName || null;
+                this.skipPeriod();
+            }
+
+            // OBJECT-COMPUTER (optional)
+            if (this.check(TokenType.OBJECT_COMPUTER)) {
+                this.advance();
+                this.skipPeriod();
+                // Read computer name (everything until next keyword or period)
+                let computerName = '';
+                while (!this.check(TokenType.DOT) &&
+                       !this.check(TokenType.SPECIAL_NAMES) &&
+                       !this.check(TokenType.INPUT_OUTPUT) &&
+                       !this.check(TokenType.DATA) &&
+                       !this.check(TokenType.PROCEDURE) &&
+                       !this.check(TokenType.EOF)) {
+                    computerName += (computerName ? ' ' : '') + this.advance().value;
+                }
+                node.objectComputer = computerName || null;
+                this.skipPeriod();
+            }
+
+            // SPECIAL-NAMES (optional) - just skip for now
+            if (this.check(TokenType.SPECIAL_NAMES)) {
+                this.advance();
+                this.skipPeriod();
+                // Skip until next section or division
+                while (!this.check(TokenType.INPUT_OUTPUT) &&
+                       !this.check(TokenType.DATA) &&
+                       !this.check(TokenType.PROCEDURE) &&
+                       !this.check(TokenType.EOF)) {
+                    if (this.check(TokenType.DOT)) {
+                        this.advance();
+                        // Check if next token starts a new section
+                        if (this.checkAny(TokenType.INPUT_OUTPUT, TokenType.DATA, TokenType.PROCEDURE)) {
+                            break;
+                        }
+                    } else {
+                        this.advance();
+                    }
+                }
+            }
+        }
+
+        // INPUT-OUTPUT SECTION (optional)
         if (this.check(TokenType.INPUT_OUTPUT)) {
             this.advance();
             this.expect(TokenType.SECTION);

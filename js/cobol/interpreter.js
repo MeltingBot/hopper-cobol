@@ -1941,7 +1941,7 @@ export class Interpreter {
             }
         } else if (stmt.inputProcedure) {
             // INPUT PROCEDURE: execute procedure that uses RELEASE
-            await this.executeProcedure(stmt.inputProcedure);
+            await this.executeNamedProcedure(stmt.inputProcedure);
         }
 
         // Sort the records
@@ -1986,7 +1986,7 @@ export class Interpreter {
         } else if (stmt.outputProcedure) {
             // OUTPUT PROCEDURE: execute procedure that uses RETURN
             this.sortOutputIndex = 0;
-            await this.executeProcedure(stmt.outputProcedure);
+            await this.executeNamedProcedure(stmt.outputProcedure);
         }
 
         // Clear work area
@@ -2054,7 +2054,7 @@ export class Interpreter {
             }
         } else if (stmt.outputProcedure) {
             this.sortOutputIndex = 0;
-            await this.executeProcedure(stmt.outputProcedure);
+            await this.executeNamedProcedure(stmt.outputProcedure);
         }
 
         // Clear work area
@@ -2140,9 +2140,9 @@ export class Interpreter {
     }
 
     /**
-     * Execute a named procedure (section or paragraph)
+     * Execute a named procedure (section or paragraph) - used by SORT/MERGE
      */
-    async executeProcedure(procName) {
+    async executeNamedProcedure(procName) {
         // Find the procedure in the AST
         const procedures = this.ast.procedure?.sections || [];
 
@@ -2165,6 +2165,16 @@ export class Interpreter {
                     }
                     return;
                 }
+            }
+        }
+
+        // Also check standalone paragraphs
+        for (const para of this.ast.procedure?.paragraphs || []) {
+            if (para.name?.toUpperCase() === procName?.toUpperCase()) {
+                for (const stmt of para.statements || []) {
+                    await this.executeStatement(stmt);
+                }
+                return;
             }
         }
     }
