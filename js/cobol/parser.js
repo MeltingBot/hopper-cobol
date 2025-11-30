@@ -556,13 +556,15 @@ export class Parser {
             } else if (this.check(TokenType.OCCURS)) {
                 this.advance();
                 // OCCURS n TIMES or OCCURS n TO m TIMES DEPENDING ON var
-                if (this.check(TokenType.NUMBER)) {
+                // Note: Lexer may tokenize small numbers (1-49, 66, 77, 88) as LEVEL_NUMBER
+                if (this.check(TokenType.NUMBER) || this.check(TokenType.LEVEL_NUMBER)) {
                     node.occurs = parseInt(this.advance().value);
                 }
                 // Optional TO m for variable-length tables
                 if (this.check(TokenType.TO)) {
                     this.advance();
-                    if (this.check(TokenType.NUMBER)) {
+                    // After TO, the max value may be tokenized as LEVEL_NUMBER (e.g., 10)
+                    if (this.check(TokenType.NUMBER) || this.check(TokenType.LEVEL_NUMBER)) {
                         node.occursMax = parseInt(this.advance().value);
                     }
                 }

@@ -236,7 +236,18 @@ class Variable {
         this.parent = null;
         this.redefines = definition.redefines;
         this.redefinesVar = null; // Will be set to point to the redefined variable
-        this.occursCount = definition.occurs || null; // Store OCCURS count for subscript handling
+        // For OCCURS x TO y DEPENDING ON: occurs=x (min), occursMax=y (max)
+        // For simple OCCURS n: occurs=n (fixed count)
+        if (definition.occursMax) {
+            // Variable-length table: OCCURS x TO y DEPENDING ON
+            this.occursMin = definition.occurs || 1;
+            this.occursCount = definition.occursMax;
+        } else {
+            // Fixed-length table: OCCURS n
+            this.occursMin = definition.occurs || null;
+            this.occursCount = definition.occurs || null;
+        }
+        this.occursDependingOn = definition.occursDependingOn || null; // Variable name for dynamic size
         this.indexedBy = definition.indexedBy || []; // Index names for SEARCH
         this.ascendingKey = definition.ascendingKey || null; // Key for SEARCH ALL
         this.descendingKey = definition.descendingKey || null;
@@ -364,6 +375,26 @@ class Variable {
             }, 0);
         }
         return this.picInfo.length;
+    }
+
+    /**
+     * Get effective OCCURS count (considering DEPENDING ON)
+     * @param {CobolRuntime} runtime - Runtime to look up DEPENDING ON variable
+     * @returns {number} Current effective count
+     */
+    getEffectiveOccursCount(runtime) {
+        if (!this.occursCount) return 1;
+
+        if (this.occursDependingOn && runtime) {
+            // Get the current value of the DEPENDING ON variable
+            const depValue = runtime.getNumericValue(this.occursDependingOn);
+            // Clamp to valid range
+            const min = this.occursMin || 1;
+            const max = this.occursCount;
+            return Math.max(min, Math.min(max, depValue));
+        }
+
+        return this.occursCount;
     }
 
     /**
@@ -3629,7 +3660,8 @@ export class Interpreter {
             return;
         }
 
-        const maxIndex = tableVar.occursCount;
+        // Use effective count (respects DEPENDING ON)
+        const maxIndex = tableVar.getEffectiveOccursCount(this.runtime);
 
         // Determine index variable: use VARYING if specified, or table's INDEXED BY
         let indexVarName = stmt.varying;
