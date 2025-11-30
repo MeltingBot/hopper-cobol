@@ -2788,6 +2788,11 @@ export class Interpreter {
             case NodeType.IDENTIFIER:
                 return this.runtime.getNumericValue(expr.name);
 
+            case NodeType.SUBSCRIPT:
+                // Handle subscripted variables like WS-PRIX(1)
+                const strValue = this.evaluateSubscript(expr);
+                return parseFloat(strValue) || 0;
+
             case NodeType.BINARY_EXPR:
             case NodeType.UNARY_EXPR:
                 return this.evaluateArithmetic(expr);
@@ -2809,6 +2814,11 @@ export class Interpreter {
 
             case NodeType.IDENTIFIER:
                 return this.runtime.getNumericValue(expr.name);
+
+            case NodeType.SUBSCRIPT:
+                // Handle subscripted variables like WS-PRIX(1)
+                const strValue = this.evaluateSubscript(expr);
+                return parseFloat(strValue) || 0;
 
             case NodeType.UNARY_EXPR:
                 const operand = this.evaluateArithmetic(expr.operand);

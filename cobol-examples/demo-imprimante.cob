@@ -22,14 +22,14 @@
       *--- Table des produits ---
        01 WS-NB-PRODUITS     PIC 99 VALUE 8.
        01 WS-TABLE-PRODUITS.
-          05 FILLER PIC X(35) VALUE "PRD001Clavier mecanique     00089".
-          05 FILLER PIC X(35) VALUE "PRD002Souris sans fil       00045".
-          05 FILLER PIC X(35) VALUE "PRD003Ecran 27 pouces       00299".
-          05 FILLER PIC X(35) VALUE "PRD004Webcam HD             00079".
-          05 FILLER PIC X(35) VALUE "PRD005Casque audio          00129".
-          05 FILLER PIC X(35) VALUE "PRD006Tapis de souris       00025".
-          05 FILLER PIC X(35) VALUE "PRD007Hub USB 3.0           00035".
-          05 FILLER PIC X(35) VALUE "PRD008Support ecran         00049".
+          05 FILLER PIC X(33) VALUE "PRD001Clavier mecanique     00089".
+          05 FILLER PIC X(33) VALUE "PRD002Souris sans fil       00045".
+          05 FILLER PIC X(33) VALUE "PRD003Ecran 27 pouces       00299".
+          05 FILLER PIC X(33) VALUE "PRD004Webcam HD             00079".
+          05 FILLER PIC X(33) VALUE "PRD005Casque audio          00129".
+          05 FILLER PIC X(33) VALUE "PRD006Tapis de souris       00025".
+          05 FILLER PIC X(33) VALUE "PRD007Hub USB 3.0           00035".
+          05 FILLER PIC X(33) VALUE "PRD008Support ecran         00049".
        01 WS-PRODUITS REDEFINES WS-TABLE-PRODUITS.
           05 WS-PRODUIT OCCURS 8.
              10 WS-PROD-CODE  PIC X(6).
