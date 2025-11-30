@@ -6,6 +6,9 @@
 import { NodeType } from './parser.js';
 import * as storage from './storage.js';
 
+// Re-export NodeType for use in buildSymbolTable
+const { CONDITION_NAME } = NodeType;
+
 /**
  * PIC clause parser - extracts type and length from PIC strings
  */
@@ -263,21 +266,17 @@ class CobolFile {
         this.currentRecord = 0;
 
         const fileName = this.getFileName();
-        console.log('[FILE] Opening', fileName, 'mode:', mode);
 
         try {
             // Check if file exists in IndexedDB
             const exists = await storage.fileExists(fileName);
-            console.log('[FILE] File exists in IndexedDB:', exists);
 
             if (exists) {
                 // Load records from IndexedDB
                 this.records = await storage.readAllRecords(fileName);
-                console.log('[FILE] Loaded', this.records.length, 'records from IndexedDB');
             } else {
                 // Create the file in IndexedDB for I-O and OUTPUT modes
                 if (mode === 'I-O' || mode === 'OUTPUT') {
-                    console.log('[FILE] Creating new file in IndexedDB');
                     await storage.createFile({
                         name: fileName,
                         organization: this.organization,
@@ -291,7 +290,7 @@ class CobolFile {
                 this.records = [];
             }
         } catch (error) {
-            console.error('[FILE] Error opening file:', error);
+            
             this.records = [];
         }
 
@@ -300,7 +299,6 @@ class CobolFile {
 
     async close() {
         const fileName = this.getFileName();
-        console.log('[FILE] Closing', fileName, 'with', this.records.length, 'records');
 
         try {
             // Create file if it doesn't exist
@@ -318,7 +316,6 @@ class CobolFile {
             for (const record of this.records) {
                 await storage.writeRecord(fileName, record);
             }
-            console.log('[FILE] Saved', this.records.length, 'records to IndexedDB');
 
             // Refresh data manager cache and UI
             if (typeof window !== 'undefined' && window.dataManagerModule) {
@@ -332,7 +329,7 @@ class CobolFile {
                 }
             }
         } catch (error) {
-            console.error('[FILE] Error closing file:', error);
+            
         }
 
         this.isOpen = false;
@@ -360,7 +357,6 @@ class CobolFile {
 
         // Normalize key field name (FRN-CODE -> FRN_CODE)
         const normalizedKeyName = this.recordKey?.toUpperCase().replace(/-/g, '_');
-        console.log('[FILE] readKey - looking for key:', normalizedKeyName, '=', keyValue);
 
         const record = this.records.find(r => {
             const keyField = Object.keys(r).find(k =>
@@ -368,16 +364,13 @@ class CobolFile {
             );
             const match = keyField && r[keyField]?.toString().trim() === keyValue?.toString().trim();
             if (keyField) {
-                console.log('[FILE] readKey - record key value:', r[keyField], 'match:', match);
             }
             return match;
         });
 
         if (record) {
-            console.log('[FILE] readKey - found record:', record);
             return { success: true, record };
         }
-        console.log('[FILE] readKey - no record found');
         return { success: false, invalidKey: true };
     }
 
@@ -497,20 +490,16 @@ class CobolFileIDB {
         this.cursorRecords = [];
 
         const fileName = this.getFileName();
-        console.log('[OPEN] Opening file:', fileName, 'mode:', mode);
 
         // Create file if it doesn't exist (for I-O and OUTPUT modes)
         if (mode === 'I-O' || mode === 'OUTPUT') {
             const exists = await this.storage.fileExists(fileName);
-            console.log('[OPEN] File exists:', exists);
             if (!exists) {
-                console.log('[OPEN] Creating file with org:', this.organization, 'key:', this.recordKey);
                 await this.storage.createFile({
                     name: fileName,
                     organization: this.organization,
                     recordKey: this.recordKey
                 });
-                console.log('[OPEN] File created');
                 // Refresh data manager UI
                 if (typeof window !== 'undefined' && window.dataManagerModule?.renderFileList) {
                     window.dataManagerModule.renderFileList();
@@ -574,9 +563,7 @@ class CobolFileIDB {
         const fileName = this.getFileName();
         // Pad the key value to match the stored format (COBOL pads strings with spaces)
         const searchKey = keyValue?.toString();
-        console.log('[readKey] fileName:', fileName, 'searchKey:', JSON.stringify(searchKey));
         const record = await this.storage.readByKey(fileName, searchKey);
-        console.log('[readKey] result:', record);
 
         if (record) {
             this.lastReadRecord = record;
@@ -691,6 +678,7 @@ export const USE_INDEXEDDB = true; // IndexedDB storage enabled
 class Runtime {
     constructor(callbacks = {}) {
         this.variables = new Map();
+        this.conditionNames = new Map();  // 88 level condition names: name -> {parentVar, values}
         this.files = new Map();
         this.paragraphs = new Map();
         this.sections = new Map();
@@ -744,6 +732,97 @@ class Runtime {
     getDisplayValue(name) {
         const variable = this.getVariable(name);
         return variable ? variable.getDisplayValue() : '';
+    }
+
+    /**
+     * Check if a name is a condition name (88 level)
+     */
+    isConditionName(name) {
+        const upperName = this.normalizeVarName(name);
+        return this.conditionNames.has(upperName);
+    }
+
+    /**
+     * Evaluate a condition name (88 level)
+     * Returns true if the parent variable's value matches any of the condition's values
+     */
+    evaluateConditionName(name) {
+        const upperName = this.normalizeVarName(name);
+        const condition = this.conditionNames.get(upperName);
+        if (!condition) return false;
+
+        const parentVar = this.getVariable(condition.parentVar);
+        if (!parentVar) return false;
+
+        const currentValue = parentVar.getValue();
+        const numericValue = parentVar.getNumericValue();
+        const isNumeric = parentVar.picInfo.type === 'numeric';
+
+        // Check each value/range in the condition
+        for (const valueEntry of condition.values) {
+            const condValue = this.getConditionValueAsString(valueEntry.value, parentVar);
+
+            if (valueEntry.thru) {
+                // Range check (THRU)
+                const thruValue = this.getConditionValueAsString(valueEntry.thru, parentVar);
+
+                if (isNumeric) {
+                    const numCondValue = parseFloat(condValue) || 0;
+                    const numThruValue = parseFloat(thruValue) || 0;
+                    if (numericValue >= numCondValue && numericValue <= numThruValue) {
+                        return true;
+                    }
+                } else {
+                    // String range comparison
+                    if (currentValue >= condValue && currentValue <= thruValue) {
+                        return true;
+                    }
+                }
+            } else {
+                // Single value check
+                if (isNumeric) {
+                    const numCondValue = parseFloat(condValue) || 0;
+                    if (numericValue === numCondValue) {
+                        return true;
+                    }
+                } else {
+                    if (currentValue.trim() === condValue.trim()) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Convert a condition value to string for comparison
+     */
+    getConditionValueAsString(condValue, parentVar) {
+        if (!condValue) return '';
+
+        switch (condValue.type) {
+            case 'string':
+                return condValue.value;
+            case 'number':
+                // Format number to match parent's PIC
+                if (parentVar && parentVar.picInfo.type === 'numeric') {
+                    return String(condValue.value).padStart(parentVar.picInfo.length, '0');
+                }
+                return String(condValue.value);
+            case 'figurative':
+                const len = parentVar ? parentVar.picInfo.length : 1;
+                switch (condValue.value) {
+                    case 'SPACES': return ' '.repeat(len);
+                    case 'ZEROS': return '0'.repeat(len);
+                    default: return '';
+                }
+            case 'boolean':
+                return condValue.value ? 'TRUE' : 'FALSE';
+            default:
+                return String(condValue.value || '');
+        }
     }
 
     // Output
@@ -894,11 +973,28 @@ export class Interpreter {
     buildSymbolTable(dataDivision) {
         const processItems = (items, parent = null) => {
             const stack = [];
+            let lastDataItem = null;  // Track last non-88 item for condition names
 
             for (const item of items) {
                 if (!item.name || item.name === 'FILLER') continue;
 
+                // Handle 88 level condition names
+                if (item.type === NodeType.CONDITION_NAME || item.level === 88) {
+                    if (lastDataItem) {
+                        // Register condition name with reference to parent variable
+                        this.runtime.conditionNames.set(
+                            this.runtime.normalizeVarName(item.name),
+                            {
+                                parentVar: lastDataItem.name,
+                                values: item.values || []
+                            }
+                        );
+                    }
+                    continue;  // Don't add 88 levels to variable stack
+                }
+
                 const variable = new Variable(item);
+                lastDataItem = item;  // Track for 88 level attachment
 
                 // Handle hierarchy based on level numbers
                 while (stack.length > 0 && stack[stack.length - 1].level >= item.level) {
@@ -1082,7 +1178,6 @@ export class Interpreter {
                 await this.executeGoTo(stmt);
                 break;
             case NodeType.STOP_RUN:
-                console.log('[EXEC] STOP RUN executed');
                 this.halted = true;
                 throw new Error('STOP RUN');
             case NodeType.EXIT:
@@ -1098,7 +1193,6 @@ export class Interpreter {
                 await this.executeClose(stmt);
                 break;
             case NodeType.READ:
-                console.log('[EXEC] About to execute READ statement');
                 await this.executeRead(stmt);
                 break;
             case NodeType.WRITE:
@@ -1440,9 +1534,7 @@ export class Interpreter {
      * Execute READ statement
      */
     async executeRead(stmt) {
-        console.log('[READ] executeRead called for file:', stmt.file);
         const file = this.runtime.getFile(stmt.file);
-        console.log('[READ] file object:', file ? 'found' : 'NOT FOUND');
 
         // If file doesn't exist, treat as AT END or INVALID KEY
         if (!file) {
@@ -1478,13 +1570,10 @@ export class Interpreter {
             // Keep the original name format (with hyphens) for variable lookup
             const keyField = file.recordKey.toUpperCase();
             const keyValue = this.runtime.getValue(keyField);
-            console.log('[READ] INDEXED file - keyField:', keyField, 'keyValue:', keyValue);
             if (keyValue && keyValue.toString().trim()) {
                 result = await file.readKey(keyValue);
-                console.log('[READ] readKey result:', result);
             } else {
                 result = await file.read();
-                console.log('[READ] sequential read result:', result);
             }
         } else {
             // Sequential read
@@ -1515,17 +1604,13 @@ export class Interpreter {
         } else if (result.invalidKey || !result.success) {
             // Execute INVALID KEY statements (for indexed files)
             // Also handle general failure as INVALID KEY
-            console.log('[READ] INVALID KEY branch - stmt.invalidKey:', stmt.invalidKey?.length, 'statements');
             if (stmt.invalidKey && stmt.invalidKey.length > 0) {
                 for (const s of stmt.invalidKey) {
-                    console.log('[READ] Executing INVALID KEY statement:', s.type);
                     await this.executeStatement(s);
                 }
             } else {
-                console.log('[READ] No INVALID KEY statements to execute');
             }
         } else {
-            console.log('[READ] No branch matched - result:', result);
         }
     }
 
@@ -1533,31 +1618,23 @@ export class Interpreter {
      * Execute WRITE statement
      */
     async executeWrite(stmt) {
-        console.log('[WRITE] executeWrite called for record:', stmt.record);
 
         // Find the file that owns this record
         let targetFile = null;
         let recordDef = null;
 
         const recordName = stmt.record?.toUpperCase();
-        console.log('[WRITE] Looking for record:', recordName);
 
         // AST stores FD in data.fileSection (not data.files)
         const fileSection = this.ast.data?.fileSection || [];
-        console.log('[WRITE] Available files in AST:', fileSection.map(f => ({
-            name: f.fileName,
-            records: f.records?.map(r => r.name)
-        })));
 
         // Look for the record definition in the AST file section
         for (const fileDef of fileSection) {
             // Check in records array (FD can have multiple 01 level records)
             for (const rec of fileDef.records || []) {
-                console.log('[WRITE] Checking fileDef:', fileDef.fileName, 'record:', rec?.name);
                 if (rec?.name?.toUpperCase() === recordName) {
                     targetFile = this.runtime.getFile(fileDef.fileName);
                     recordDef = rec;
-                    console.log('[WRITE] Found file:', fileDef.fileName, 'for record:', recordName);
                     break;
                 }
             }
@@ -1569,22 +1646,18 @@ export class Interpreter {
             for (const [fileName, file] of this.runtime.files) {
                 if (file.isOpen && (file.mode === 'OUTPUT' || file.mode === 'I-O' || file.mode === 'EXTEND')) {
                     targetFile = file;
-                    console.log('[WRITE] Using first writable file:', fileName);
                     break;
                 }
             }
         }
 
         if (!targetFile) {
-            console.error('[WRITE] No writable file found');
             return;
         }
 
         // Build record from the record's fields defined in AST
         const record = {};
 
-        console.log('[WRITE] recordDef:', recordDef);
-        console.log('[WRITE] recordDef.children:', recordDef?.children);
 
         // Get field names from record definition in AST
         const recordFields = new Set();
@@ -1601,7 +1674,6 @@ export class Interpreter {
             };
             collectFields(recordDef.children);
         }
-        console.log('[WRITE] Record fields from AST definition:', Array.from(recordFields));
 
         // Use field definitions from AST
         for (const fieldName of recordFields) {
@@ -1613,12 +1685,10 @@ export class Interpreter {
 
         // If no fields found from AST, the record structure wasn't parsed correctly
         if (Object.keys(record).length === 0) {
-            console.warn('[WRITE] No fields found from AST! Check parser output.');
+            
         }
 
-        console.log('[WRITE] Writing record:', record);
         const result = await targetFile.write(record);
-        console.log('[WRITE] Result:', result);
 
         // Refresh data manager UI in real-time
         if (typeof window !== 'undefined' && window.dataManagerModule?.renderFileList) {
@@ -1659,7 +1729,7 @@ export class Interpreter {
         }
 
         if (!targetFile) {
-            console.error('[REWRITE] No writable file found');
+            
             return;
         }
 
@@ -1733,7 +1803,6 @@ export class Interpreter {
 
         // Position the file cursor
         const success = await file.start(keyValue, stmt.operator);
-        console.log('START result:', success, 'cursor records:', file.cursorRecords?.length || 0);
 
         if (!success && stmt.invalidKey) {
             for (const s of stmt.invalidKey) {
@@ -1844,6 +1913,13 @@ export class Interpreter {
     evaluateCondition(condition) {
         if (!condition) return false;
 
+        // Check if it's an identifier that's actually a condition name (88 level)
+        if (condition.type === NodeType.IDENTIFIER) {
+            if (this.runtime.isConditionName(condition.name)) {
+                return this.runtime.evaluateConditionName(condition.name);
+            }
+        }
+
         if (condition.type === NodeType.CONDITION) {
             const { operator, left, right } = condition;
 
@@ -1901,6 +1977,13 @@ export class Interpreter {
                     break;
 
                 default:
+                    // Check if operator is empty and left is a condition name (88 level)
+                    if (!op && left?.type === NodeType.IDENTIFIER) {
+                        if (this.runtime.isConditionName(left.name)) {
+                            result = this.runtime.evaluateConditionName(left.name);
+                            break;
+                        }
+                    }
                     result = false;
             }
 
@@ -1908,6 +1991,11 @@ export class Interpreter {
         }
 
         // Simple truthy check for non-condition nodes
+        // Also check if it's a condition name (88 level)
+        if (condition.name && this.runtime.isConditionName(condition.name)) {
+            return this.runtime.evaluateConditionName(condition.name);
+        }
+
         const value = this.evaluateExpression(condition);
         return Boolean(value) && value !== '0' && value !== 'N' && value !== 'FALSE';
     }

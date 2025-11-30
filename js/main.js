@@ -83,16 +83,100 @@ window.loadExample = tutorial.loadExample;
 window.selectExample = tutorial.selectExample;
 
 /**
+ * Fake mainframe boot sequence for console enthusiasts
+ */
+function mainframeBoot() {
+    const cyan = 'color: #00d4ff; font-weight: bold;';
+    const green = 'color: #39ff14; font-weight: bold;';
+    const yellow = 'color: #ffcc00;';
+    const white = 'color: #ffffff;';
+    const dim = 'color: #888888;';
+    const bold = 'color: #ffffff; font-weight: bold; font-size: 14px;';
+
+    console.clear();
+    console.log('%c╔════════════════════════════════════════════════════════════════╗', cyan);
+    console.log('%c║                                                                ║', cyan);
+    console.log('%c║   ██╗  ██╗ ██████╗ ██████╗ ██████╗ ███████╗██████╗            ║', cyan);
+    console.log('%c║   ██║  ██║██╔═══██╗██╔══██╗██╔══██╗██╔════╝██╔══██╗           ║', cyan);
+    console.log('%c║   ███████║██║   ██║██████╔╝██████╔╝█████╗  ██████╔╝           ║', cyan);
+    console.log('%c║   ██╔══██║██║   ██║██╔═══╝ ██╔═══╝ ██╔══╝  ██╔══██╗           ║', cyan);
+    console.log('%c║   ██║  ██║╚██████╔╝██║     ██║     ███████╗██║  ██║           ║', cyan);
+    console.log('%c║   ╚═╝  ╚═╝ ╚═════╝ ╚═╝     ╚═╝     ╚══════╝╚═╝  ╚═╝           ║', cyan);
+    console.log('%c║                                                                ║', cyan);
+    console.log('%c║            COBOL EMULATOR - VIRTUAL MAINFRAME                 ║', cyan);
+    console.log('%c╚════════════════════════════════════════════════════════════════╝', cyan);
+    console.log('');
+    console.log('%c MAINFRAME SYSTEM INITIALIZATION', bold);
+    console.log('%c ═══════════════════════════════════════════════════════════════', dim);
+    console.log('');
+    console.log('%c IPL FROM DEVICE 0A80', yellow);
+    console.log('%c PROCESSOR COMPLEX ID: HOPPER-VM', white);
+    console.log('%c MODEL: VIRTUAL  SERIAL: GH-1906-1992', white);
+    console.log('');
+    console.log('%c STORAGE', green);
+    console.log('%c   CENTRAL STORAGE ........ 256M (BROWSER HEAP)', dim);
+    console.log('%c   EXPANDED STORAGE ....... INDEXEDDB VSAM', dim);
+    console.log('%c   VIRTUAL STORAGE ........ 2G ADDRESS SPACE', dim);
+    console.log('');
+    console.log('%c DEVICES', green);
+    console.log('%c   0A80 ................... IPL DEVICE (ES MODULE)', dim);
+    console.log('%c   00C0-00C2 .............. CARD READER/PUNCH', dim);
+    console.log('%c   0580-058F .............. DASD STORAGE (INDEXEDDB)', dim);
+    console.log('%c   0700 ................... 3270 CONSOLE (DOM)', dim);
+    console.log('');
+    console.log('%c SUBSYSTEMS', green);
+    console.log('%c   JOB SCHEDULER .......... ACTIVE', dim);
+    console.log('%c   NETWORK MANAGER ........ ACTIVE', dim);
+    console.log('%c   TERMINAL SERVICES ...... READY', dim);
+    console.log('%c   COBOL COMPILER ......... COBOL-85 V1.0', dim);
+    console.log('%c   RUNTIME ................ HOPPER/JS V1.0', dim);
+    console.log('');
+    console.log('%c ═══════════════════════════════════════════════════════════════', dim);
+    console.log('%c SYS001 SYSTEM READY', green);
+    console.log('%c JOB003 HOPPER - STARTED - TIME=' + new Date().toTimeString().slice(0,8), green);
+    console.log('');
+    console.log('%c ┌─────────────────────────────────────────────────────────────┐', dim);
+    console.log('%c │  In memory of Rear Admiral Grace Hopper (1906-1992)        │', dim);
+    console.log('%c │  Pioneer of computer programming, co-inventor of COBOL     │', dim);
+    console.log('%c │  "The most dangerous phrase is: We\'ve always done it       │', dim);
+    console.log('%c │   this way."                                               │', dim);
+    console.log('%c └─────────────────────────────────────────────────────────────┘', dim);
+    console.log('');
+    console.log('%c Type %cwindow.HOPPER%c to access runtime API', dim, 'color: #ff6b6b; font-weight: bold;', dim);
+}
+
+/**
  * Initialize the application
  */
 function init() {
+    // Easter egg: Fake mainframe boot
+    mainframeBoot();
+
     editor.initEditor();
     dataManager.initDataManager();
     tutorial.initTutorial();
     initResizers();
 
-    console.log('HOPPER - COBOL Emulator initialized');
-    console.log('In memory of Grace Hopper (1906-1992), mother of COBOL');
+    // Expose runtime API for console hackers
+    window.HOPPER = {
+        version: '1.0.0',
+        author: 'MeltingBot',
+        tribute: 'Grace Hopper (1906-1992)',
+        modules: {
+            editor,
+            dataManager,
+            tutorial
+        },
+        help: () => {
+            console.log('%c HOPPER Runtime API', 'color: #00d4ff; font-weight: bold;');
+            console.log('%c ═════════════════', 'color: #888;');
+            console.log('  HOPPER.modules.editor     - Editor functions');
+            console.log('  HOPPER.modules.dataManager - File I/O');
+            console.log('  HOPPER.modules.tutorial   - Examples');
+            console.log('  HOPPER.reboot()           - Show boot sequence');
+        },
+        reboot: mainframeBoot
+    };
 }
 
 // Initialize when DOM is ready

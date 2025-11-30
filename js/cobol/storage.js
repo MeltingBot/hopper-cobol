@@ -51,7 +51,6 @@ export async function initStorage() {
 
             request.onsuccess = () => {
                 db = request.result;
-                console.log('[STORAGE] Database opened, version:', db.version, 'stores:', Array.from(db.objectStoreNames));
                 resolve(db);
             };
 
@@ -106,7 +105,6 @@ export async function createFile(fileDefinition) {
 
     // Increment version for schema change
     currentVersion++;
-    console.log('[STORAGE] Creating file:', storeName, 'new version:', currentVersion);
 
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, currentVersion);
@@ -198,8 +196,6 @@ export async function getFileMetadata(fileName) {
 export async function listFiles() {
     await initStorage();
 
-    console.log('[STORAGE] listFiles - db.objectStoreNames:', Array.from(db.objectStoreNames));
-
     const files = [];
     for (const name of db.objectStoreNames) {
         if (name !== META_STORE) {
@@ -212,7 +208,6 @@ export async function listFiles() {
             });
         }
     }
-    console.log('[STORAGE] listFiles - returning:', files);
     return files;
 }
 
@@ -244,11 +239,7 @@ export async function readAllRecords(fileName) {
     await initStorage();
     const storeName = fileName.toUpperCase();
 
-    console.log('[STORAGE] readAllRecords for:', storeName);
-    console.log('[STORAGE] db.objectStoreNames:', Array.from(db.objectStoreNames));
-
     if (!db.objectStoreNames.contains(storeName)) {
-        console.log('[STORAGE] Store not found');
         return [];
     }
 
@@ -257,10 +248,7 @@ export async function readAllRecords(fileName) {
         const store = tx.objectStore(storeName);
         const request = store.getAll();
 
-        request.onsuccess = () => {
-            console.log('[STORAGE] readAllRecords result:', request.result);
-            resolve(request.result);
-        };
+        request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
     });
 }

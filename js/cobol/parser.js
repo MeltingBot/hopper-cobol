@@ -17,6 +17,7 @@ export const NodeType = {
 
     // Data items
     DATA_ITEM: 'DATA_ITEM',
+    CONDITION_NAME: 'CONDITION_NAME',  // 88 level condition names
     FILE_DESCRIPTION: 'FILE_DESCRIPTION',
     FILE_CONTROL: 'FILE_CONTROL',
     SELECT_STATEMENT: 'SELECT_STATEMENT',
@@ -401,6 +402,11 @@ export class Parser {
     parseDataItem() {
         const level = this.expect(TokenType.LEVEL_NUMBER).value;
 
+        // Level 88 = Condition name (special handling)
+        if (level === 88) {
+            return this.parseConditionName();
+        }
+
         const node = new ASTNode(NodeType.DATA_ITEM, {
             level,
             name: null,
@@ -408,6 +414,7 @@ export class Parser {
             value: null,
             redefines: null,
             children: [],
+            conditionNames: [],  // 88 level condition names attached to this item
         });
 
         // Name or FILLER
@@ -443,6 +450,93 @@ export class Parser {
 
         this.skipPeriod();
         return node;
+    }
+
+    /**
+     * Parse 88 level condition name
+     * Syntax: 88 condition-name VALUE[S] [IS|ARE] value-1 [THRU value-2] [value-3 [THRU value-4]]...
+     */
+    parseConditionName() {
+        const node = new ASTNode(NodeType.CONDITION_NAME, {
+            level: 88,
+            name: null,
+            values: [],  // Array of {value, thru} objects
+        });
+
+        // Condition name
+        if (this.check(TokenType.IDENTIFIER)) {
+            node.name = this.advance().value;
+        }
+
+        // VALUE or VALUES keyword
+        if (this.checkAny(TokenType.VALUE, TokenType.VALUES)) {
+            this.advance();
+            this.optional(TokenType.IS);
+            this.optional(TokenType.ARE);
+
+            // Parse value list
+            while (!this.check(TokenType.DOT) && !this.check(TokenType.EOF) &&
+                   !this.check(TokenType.LEVEL_NUMBER) && !this.check(TokenType.PROCEDURE)) {
+                const valueEntry = { value: null, thru: null };
+
+                // Parse value
+                valueEntry.value = this.parseConditionValue();
+
+                // Check for THRU/THROUGH
+                if (this.checkAny(TokenType.THRU, TokenType.THROUGH)) {
+                    this.advance();
+                    valueEntry.thru = this.parseConditionValue();
+                }
+
+                node.values.push(valueEntry);
+
+                // Skip comma between values (if any)
+                this.optional(TokenType.COMMA);
+
+                // Check if next token could be another value
+                if (!this.checkAny(TokenType.STRING_LITERAL, TokenType.NUMBER, TokenType.IDENTIFIER,
+                                   TokenType.SPACES, TokenType.SPACE, TokenType.ZEROS, TokenType.ZEROES,
+                                   TokenType.ZERO, TokenType.TRUE, TokenType.FALSE)) {
+                    break;
+                }
+            }
+        }
+
+        this.skipPeriod();
+        return node;
+    }
+
+    /**
+     * Parse a value for condition name (88 level)
+     */
+    parseConditionValue() {
+        if (this.check(TokenType.STRING_LITERAL)) {
+            return { type: 'string', value: this.advance().value };
+        }
+        if (this.check(TokenType.NUMBER)) {
+            return { type: 'number', value: this.advance().value };
+        }
+        if (this.checkAny(TokenType.SPACES, TokenType.SPACE)) {
+            this.advance();
+            return { type: 'figurative', value: 'SPACES' };
+        }
+        if (this.checkAny(TokenType.ZEROS, TokenType.ZEROES, TokenType.ZERO)) {
+            this.advance();
+            return { type: 'figurative', value: 'ZEROS' };
+        }
+        if (this.check(TokenType.TRUE)) {
+            this.advance();
+            return { type: 'boolean', value: true };
+        }
+        if (this.check(TokenType.FALSE)) {
+            this.advance();
+            return { type: 'boolean', value: false };
+        }
+        // Default: treat as identifier (for named constants)
+        if (this.check(TokenType.IDENTIFIER)) {
+            return { type: 'identifier', value: this.advance().value };
+        }
+        return null;
     }
 
     /**

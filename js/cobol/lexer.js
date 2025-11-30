@@ -132,6 +132,7 @@ export const TokenType = {
     HIGH_VALUES: 'HIGH_VALUES',
     QUOTES: 'QUOTES',
     QUOTE: 'QUOTE',
+    VALUES: 'VALUES',
 
     // Keywords - Other
     IS: 'IS',
@@ -297,6 +298,7 @@ const KEYWORDS = {
     'HIGH-VALUES': TokenType.HIGH_VALUES,
     'QUOTES': TokenType.QUOTES,
     'QUOTE': TokenType.QUOTE,
+    'VALUES': TokenType.VALUES,
     'IS': TokenType.IS,
     'ARE': TokenType.ARE,
     'OF': TokenType.OF,
