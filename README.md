@@ -32,159 +32,19 @@ Use the dialect selector in the editor to choose a specific version or let auto-
 
 ## Supported COBOL Features
 
-### Data Division
+HOPPER implements a comprehensive subset of COBOL-68 through COBOL-85:
 
-| Feature | Syntax | Status |
-|---------|--------|--------|
-| Level numbers | `01` to `49`, `66`, `77`, `88` | ✅ |
-| PICTURE clause | `PIC X(10)`, `PIC 9(5)V99`, `PIC S9(4)` | ✅ |
-| VALUE clause | `VALUE "text"`, `VALUE 123`, `VALUE ZEROS` | ✅ |
-| REDEFINES | `05 VAR-B REDEFINES VAR-A` | ✅ |
-| OCCURS | `OCCURS 10 TIMES`, `OCCURS 1 TO 100 DEPENDING ON` | ✅ |
-| INDEXED BY | `OCCURS 10 INDEXED BY IDX-1` | ✅ |
-| 88-level conditions | `88 IS-VALID VALUE "Y" "O".` | ✅ |
-| VALUE THRU | `88 IN-RANGE VALUE 1 THRU 100.` | ✅ |
-| WORKING-STORAGE | `WORKING-STORAGE SECTION.` | ✅ |
-| FILE SECTION | `FD`, `SELECT`, `ASSIGN` | ✅ |
-| USAGE | `COMP`, `BINARY`, `PACKED-DECIMAL` | ⚠️ Parsed |
+| Category | Features |
+|----------|----------|
+| **Data Division** | Levels 01-88, PIC, VALUE, REDEFINES, OCCURS, INDEXED BY |
+| **Arithmetic** | ADD, SUBTRACT, MULTIPLY, DIVIDE, COMPUTE |
+| **Control Flow** | IF/ELSE, EVALUATE, PERFORM (TIMES/UNTIL/VARYING), GO TO |
+| **String Handling** | STRING, UNSTRING, INSPECT, Reference Modification `VAR(1:5)` |
+| **Tables** | OCCURS, SEARCH, SEARCH ALL, subscripting |
+| **File I/O** | OPEN, READ, WRITE, REWRITE, DELETE, CLOSE, SORT, MERGE |
+| **Screen Control** | IBM 3270 extensions (LINE, POSITION, ERASE, HIGHLIGHT...) |
 
-### Procedure Division - Statements
-
-| Statement | Syntax Example | Status |
-|-----------|----------------|--------|
-| DISPLAY | `DISPLAY "Hello" WS-VAR` | ✅ |
-| ACCEPT | `ACCEPT WS-INPUT` | ✅ |
-| MOVE | `MOVE X TO Y Z` | ✅ |
-| INITIALIZE | `INITIALIZE WS-RECORD` | ✅ |
-| ADD | `ADD A B TO C GIVING D` | ✅ |
-| SUBTRACT | `SUBTRACT A FROM B GIVING C` | ✅ |
-| MULTIPLY | `MULTIPLY A BY B GIVING C` | ✅ |
-| DIVIDE | `DIVIDE A INTO B GIVING C REMAINDER R` | ✅ |
-| COMPUTE | `COMPUTE X = (A + B) * C / D ** 2` | ✅ |
-| IF/ELSE | `IF cond THEN ... ELSE ... END-IF` | ✅ |
-| EVALUATE | `EVALUATE var WHEN val ... END-EVALUATE` | ✅ |
-| PERFORM | `PERFORM para`, `PERFORM n TIMES`, `PERFORM UNTIL`, `PERFORM VARYING` | ✅ |
-| GO TO | `GO TO paragraph-name` | ✅ |
-| EXIT | `EXIT`, `EXIT PARAGRAPH` | ✅ |
-| STOP RUN | `STOP RUN` | ✅ |
-| CONTINUE | `CONTINUE` | ✅ |
-| SET | `SET idx TO 5`, `SET idx UP BY 1`, `SET cond TO TRUE` | ✅ |
-
-### String Manipulation (COBOL-74/85)
-
-| Statement | Syntax Example | Status |
-|-----------|----------------|--------|
-| STRING | `STRING a DELIMITED BY " " b DELIMITED BY SIZE INTO c` | ✅ |
-| UNSTRING | `UNSTRING src DELIMITED BY ";" INTO a b c TALLYING cnt` | ✅ |
-| INSPECT TALLYING | `INSPECT var TALLYING cnt FOR ALL "X"` | ✅ |
-| INSPECT REPLACING | `INSPECT var REPLACING ALL "X" BY "Y"` | ✅ |
-| INSPECT CONVERTING | `INSPECT var CONVERTING "abc" TO "ABC"` | ✅ |
-| Reference Modification | `MOVE WS-VAR(1:5) TO WS-SUB` | ✅ |
-| Subscripting | `MOVE TABLE-ITEM(I) TO WS-VAR` | ✅ |
-
-### File Operations
-
-| Statement | Syntax Example | Status |
-|-----------|----------------|--------|
-| OPEN | `OPEN INPUT file`, `OPEN OUTPUT file`, `OPEN I-O file` | ✅ |
-| CLOSE | `CLOSE file-1 file-2` | ✅ |
-| READ | `READ file AT END ... NOT AT END ... END-READ` | ✅ |
-| READ KEY | `READ file KEY IS key-field INVALID KEY ...` | ✅ |
-| WRITE | `WRITE record-name` | ✅ |
-| REWRITE | `REWRITE record-name` | ✅ |
-| DELETE | `DELETE file-name INVALID KEY ...` | ✅ |
-| START | `START file KEY >= key-field` | ✅ |
-| SORT | `SORT file ON ASCENDING KEY ... USING ... GIVING ...` | ✅ |
-| MERGE | `MERGE file ON ASCENDING KEY ... USING ... GIVING ...` | ✅ |
-| RELEASE | `RELEASE sort-record` | ✅ |
-| RETURN | `RETURN sort-file AT END ...` | ✅ |
-
-### Table Handling
-
-| Feature | Syntax Example | Status |
-|---------|----------------|--------|
-| SEARCH | `SEARCH table AT END ... WHEN cond ... END-SEARCH` | ✅ |
-| SEARCH ALL | `SEARCH ALL table WHEN key = value ...` | ✅ |
-| OCCURS | `OCCURS 100 TIMES` | ✅ |
-| OCCURS DEPENDING ON | `OCCURS 1 TO 100 DEPENDING ON WS-SIZE` | ✅ |
-| INDEXED BY | `INDEXED BY IDX-1` | ✅ |
-| ASCENDING KEY | `ASCENDING KEY IS field-name` | ✅ |
-
-### File Organizations
-
-| Type | Status | Notes |
-|------|--------|-------|
-| SEQUENTIAL | ✅ | Line sequential access |
-| INDEXED | ✅ | Key-based access via IndexedDB |
-| RELATIVE | ⚠️ | Parsed, limited support |
-
-### Figurative Constants
-
-| Constant | Status |
-|----------|--------|
-| SPACES / SPACE | ✅ |
-| ZEROS / ZEROES / ZERO | ✅ |
-| LOW-VALUES | ✅ |
-| HIGH-VALUES | ✅ |
-| QUOTES | ✅ |
-
-### Legend
-
-| Symbol | Meaning |
-|--------|---------|
-| ✅ | Fully implemented |
-| ⚠️ | Partially implemented or parsed only |
-| ❌ | Not implemented |
-
-### Not Yet Implemented
-
-| Feature | Standard | Notes |
-|---------|----------|-------|
-| CALL / CANCEL | COBOL-85 | Subprogram calls |
-| COPY | COBOL-74 | Copybook inclusion |
-| COPY REPLACING | COBOL-85 | Copybook with substitution |
-| LINAGE | COBOL-74 | Print page control |
-| WRITE ADVANCING | COBOL-68 | Printer line control |
-| DECLARATIVES | COBOL-85 | Error handling procedures |
-| ALTER | COBOL-68 | Dynamic GO TO modification (obsolete) |
-
-### Screen Control (IBM 3270 Extensions)
-
-HOPPER supports IBM 3270 style screen control for building interactive terminal applications:
-
-```cobol
-      * Positioning
-       DISPLAY 'Hello' LINE 5 POSITION 10.
-       ACCEPT WS-NAME LINE 5 COLUMN 20.
-
-      * Screen clearing
-       DISPLAY ' ' LINE 1 POSITION 1 ERASE EOS.    *> Erase to End Of Screen
-       DISPLAY ' ' LINE 1 POSITION 1 ERASE EOL.    *> Erase to End Of Line
-       DISPLAY ' ' LINE 1 POSITION 1 ERASE SCREEN. *> Clear entire screen
-
-      * Display attributes
-       DISPLAY 'Important!' LINE 3 POSITION 1 HIGHLIGHT.
-       DISPLAY 'Warning' LINE 4 POSITION 1 BLINK.
-       DISPLAY 'Selected' LINE 5 POSITION 1 REVERSE-VIDEO.
-       DISPLAY 'Link' LINE 6 POSITION 1 UNDERLINE.
-
-      * Combined attributes
-       DISPLAY 'Critical' LINE 7 POSITION 1 HIGHLIGHT BLINK.
-```
-
-**Supported DISPLAY options:**
-- `LINE n` / `POSITION n` / `COLUMN n` / `COL n` - Cursor positioning (1-based)
-- `ERASE EOS` / `ERASE EOL` / `ERASE SCREEN` - Screen clearing
-- `HIGHLIGHT` - Bright/bold text
-- `BLINK` - Blinking text
-- `REVERSE-VIDEO` - Inverted colors
-- `UNDERLINE` - Underlined text
-- `BELL` / `BEEP` - Terminal beep
-
-**Supported ACCEPT options:**
-- `LINE n` / `POSITION n` / `COLUMN n` - Input field positioning
-- `SECURE` - Password input (hidden characters)
-- Display attributes (HIGHLIGHT, REVERSE-VIDEO, etc.)
+**[Complete COBOL Reference Guide](docs/COBOL-REFERENCE.md)** - Full syntax documentation with examples
 
 ## Getting Started
 
@@ -224,6 +84,8 @@ No build step required - it's pure static HTML/CSS/JS!
 hopper-cobol/
 ├── index.html              # Main application
 ├── css/styles.css          # Retro terminal styling
+├── docs/
+│   └── COBOL-REFERENCE.md  # Complete language reference
 ├── js/
 │   ├── main.js             # App initialization
 │   ├── editor.js           # Code editor & runtime
@@ -240,9 +102,6 @@ hopper-cobol/
     ├── demo-ecran.cob      # Screen control demo (IBM 3270)
     ├── gestion-clients.cob # Customer management (ERP)
     ├── facturation.cob     # Invoicing (ERP)
-    ├── gestion-stock.cob   # Inventory management (ERP)
-    ├── banque-comptes.cob  # Bank accounts (BANQUE)
-    ├── paie-employes.cob   # Payroll (RH)
     └── ...
 ```
 
