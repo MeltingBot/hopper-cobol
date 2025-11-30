@@ -818,7 +818,7 @@ export class Parser {
     }
 
     /**
-     * Parse DISPLAY statement
+     * Parse DISPLAY statement with screen control extensions
      */
     parseDisplay() {
         this.expect(TokenType.DISPLAY);
@@ -826,24 +826,137 @@ export class Parser {
         const node = new ASTNode(NodeType.DISPLAY, {
             items: [],
             noAdvancing: false,
+            // Screen control extensions
+            line: null,
+            column: null,
+            erase: null,        // 'EOS', 'EOL', or 'SCREEN'
+            highlight: false,
+            lowlight: false,
+            blink: false,
+            reverseVideo: false,
+            underline: false,
+            bell: false,
+            foregroundColor: null,
+            backgroundColor: null,
         });
 
-        // Parse display items
+        // Parse display items and screen control clauses
         while (!this.check(TokenType.DOT) && !this.check(TokenType.EOF) &&
                !this.isStatementStart() && !this.check(TokenType.END_IF) &&
                !this.check(TokenType.END_PERFORM) && !this.check(TokenType.ELSE)) {
+
+            // NO ADVANCING
             if (this.check(TokenType.NO)) {
                 this.advance();
                 if (this.check(TokenType.ADVANCING)) {
                     this.advance();
                     node.noAdvancing = true;
                 }
-            } else if (this.check(TokenType.WITH)) {
+            }
+            // WITH (optional prefix for attributes)
+            else if (this.check(TokenType.WITH)) {
                 this.advance();
-            } else if (this.check(TokenType.UPON)) {
+            }
+            // UPON device
+            else if (this.check(TokenType.UPON)) {
                 this.advance();
                 this.advance(); // device name
-            } else {
+            }
+            // LINE number
+            else if (this.check(TokenType.LINE)) {
+                this.advance();
+                this.optional(TokenType.NUMBER); // LINE NUMBER IS ...
+                this.optional(TokenType.IS);
+                if (this.check(TokenType.NUMBER)) {
+                    node.line = parseInt(this.advance().value);
+                } else if (this.check(TokenType.IDENTIFIER)) {
+                    node.line = this.advance().value;
+                }
+            }
+            // COLUMN/COL/POSITION number
+            else if (this.checkAny(TokenType.COLUMN, TokenType.COL, TokenType.POSITION)) {
+                this.advance();
+                this.optional(TokenType.NUMBER); // COLUMN NUMBER IS ...
+                this.optional(TokenType.IS);
+                if (this.check(TokenType.NUMBER)) {
+                    node.column = parseInt(this.advance().value);
+                } else if (this.check(TokenType.IDENTIFIER)) {
+                    node.column = this.advance().value;
+                }
+            }
+            // ERASE EOS/EOL/SCREEN
+            else if (this.check(TokenType.ERASE)) {
+                this.advance();
+                if (this.check(TokenType.EOS)) {
+                    this.advance();
+                    node.erase = 'EOS';
+                } else if (this.check(TokenType.EOL)) {
+                    this.advance();
+                    node.erase = 'EOL';
+                } else if (this.check(TokenType.SCREEN)) {
+                    this.advance();
+                    node.erase = 'SCREEN';
+                } else {
+                    node.erase = 'EOS'; // default
+                }
+            }
+            // BLANK SCREEN/LINE
+            else if (this.check(TokenType.BLANK)) {
+                this.advance();
+                if (this.check(TokenType.SCREEN)) {
+                    this.advance();
+                    node.erase = 'SCREEN';
+                } else if (this.check(TokenType.LINE)) {
+                    this.advance();
+                    node.erase = 'EOL';
+                }
+            }
+            // Display attributes
+            else if (this.check(TokenType.HIGHLIGHT)) {
+                this.advance();
+                node.highlight = true;
+            }
+            else if (this.check(TokenType.LOWLIGHT)) {
+                this.advance();
+                node.lowlight = true;
+            }
+            else if (this.check(TokenType.BLINK)) {
+                this.advance();
+                node.blink = true;
+            }
+            else if (this.check(TokenType.REVERSE_VIDEO)) {
+                this.advance();
+                node.reverseVideo = true;
+            }
+            else if (this.check(TokenType.UNDERLINE)) {
+                this.advance();
+                node.underline = true;
+            }
+            else if (this.checkAny(TokenType.BELL, TokenType.BEEP)) {
+                this.advance();
+                node.bell = true;
+            }
+            // FOREGROUND-COLOR / BACKGROUND-COLOR
+            else if (this.check(TokenType.FOREGROUND_COLOR)) {
+                this.advance();
+                this.optional(TokenType.IS);
+                if (this.check(TokenType.NUMBER)) {
+                    node.foregroundColor = parseInt(this.advance().value);
+                } else if (this.check(TokenType.IDENTIFIER)) {
+                    node.foregroundColor = this.advance().value;
+                }
+            }
+            else if (this.check(TokenType.BACKGROUND_COLOR)) {
+                this.advance();
+                this.optional(TokenType.IS);
+                if (this.check(TokenType.NUMBER)) {
+                    node.backgroundColor = parseInt(this.advance().value);
+                } else if (this.check(TokenType.IDENTIFIER)) {
+                    node.backgroundColor = this.advance().value;
+                }
+            }
+            // Display item (expression)
+            else {
                 const item = this.parseExpression();
                 if (item) {
                     node.items.push(item);
