@@ -208,25 +208,34 @@ function getColor(colorNum) {
     return colors[colorNum] || colors[2]; // Default to green
 }
 
-// Default COBOL program
+// Default COBOL program with screen control demo
 const DEFAULT_CODE = `       IDENTIFICATION DIVISION.
        PROGRAM-ID. HELLO.
        DATA DIVISION.
        WORKING-STORAGE SECTION.
-       01 WS-MSG PIC X(20) VALUE 'HELLO WORLD!'.
        01 WS-NAME PIC X(15).
        01 WS-COUNT PIC 99 VALUE 0.
        PROCEDURE DIVISION.
-           DISPLAY 'BIENVENUE EN COBOL!'.
-           DISPLAY WS-MSG.
-           DISPLAY 'ENTREZ VOTRE NOM:'.
-           ACCEPT WS-NAME.
-           DISPLAY 'BONJOUR ' WS-NAME '!'.
+      *    Clear screen and display title
+           DISPLAY ' ' LINE 1 POSITION 1 ERASE EOS.
+           DISPLAY '=== HOPPER COBOL ===' LINE 2 POSITION 30
+               HIGHLIGHT.
+           DISPLAY 'Demonstrateur IBM 3270' LINE 3 POSITION 28.
+      *    Form display with positioning
+           DISPLAY 'Entrez votre nom:' LINE 6 POSITION 10.
+           ACCEPT WS-NAME LINE 6 POSITION 28.
+           DISPLAY 'Bonjour, ' LINE 8 POSITION 10 HIGHLIGHT.
+           DISPLAY WS-NAME LINE 8 POSITION 19 REVERSE-VIDEO.
+      *    Counter with blinking
+           DISPLAY 'Compteur:' LINE 11 POSITION 10.
            PERFORM 5 TIMES
                ADD 1 TO WS-COUNT
-               DISPLAY 'COMPTEUR: ' WS-COUNT
+               DISPLAY WS-COUNT LINE 11 POSITION 20 BLINK
            END-PERFORM.
-           DISPLAY 'FIN DU PROGRAMME'.
+      *    End message
+           DISPLAY 'Appuyez sur ENTREE...' LINE 23 POSITION 1.
+           ACCEPT WS-NAME.
+           DISPLAY 'FIN DU PROGRAMME' LINE 24 POSITION 32 HIGHLIGHT.
            STOP RUN.`;
 
 /**
