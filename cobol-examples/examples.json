@@ -1,0 +1,65 @@
+[
+  {
+    "id": "gestion-clients",
+    "title": "Gestion Clients",
+    "category": "FICHIERS",
+    "description": "CRUD complet sur un fichier clients indexé. Créer, lire, modifier, supprimer des clients.",
+    "file": "gestion-clients.cob"
+  },
+  {
+    "id": "facturation",
+    "title": "Facturation",
+    "category": "COMPTA",
+    "description": "Génère une facture à partir des articles commandés. Calcul TVA et total.",
+    "file": "facturation.cob"
+  },
+  {
+    "id": "gestion-stock",
+    "title": "Gestion Stock",
+    "category": "LOGISTIQUE",
+    "description": "Entrées/sorties de stock avec alertes de seuil minimum.",
+    "file": "gestion-stock.cob"
+  },
+  {
+    "id": "paie-employes",
+    "title": "Paie Employés",
+    "category": "RH",
+    "description": "Calcul de bulletin de paie avec heures sup, cotisations et net à payer.",
+    "file": "paie-employes.cob"
+  },
+  {
+    "id": "rapport-ventes",
+    "title": "Rapport Ventes",
+    "category": "REPORTING",
+    "description": "Génère un rapport de ventes avec totaux par vendeur et global.",
+    "file": "rapport-ventes.cob"
+  },
+  {
+    "id": "banque-comptes",
+    "title": "Banque - Comptes",
+    "category": "BANQUE",
+    "description": "Gestion de comptes bancaires: consultation, dépôt, retrait, virement.",
+    "file": "banque-comptes.cob"
+  },
+  {
+    "id": "reservations",
+    "title": "Réservations",
+    "category": "TOURISME",
+    "description": "Système de réservation hôtelière avec disponibilités et confirmations.",
+    "file": "reservations.cob"
+  },
+  {
+    "id": "commandes-fournisseurs",
+    "title": "Commandes Fournisseurs",
+    "category": "ACHATS",
+    "description": "Gestion complete: fournisseurs, produits, commandes, reception.",
+    "file": "commandes-fournisseurs.cob"
+  },
+  {
+    "id": "import-export-csv",
+    "title": "Import/Export CSV",
+    "category": "BATCH",
+    "description": "Lecture d'un fichier séquentiel et export formaté type CSV.",
+    "file": "import-export-csv.cob"
+  }
+]

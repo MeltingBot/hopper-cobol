@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HOPPER - Émulateur COBOL</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">⚓</div>
+            <div>
+                <div class="logo-text">HOPPER</div>
+                <div class="logo-subtitle">COBOL EMULATOR</div>
+            </div>
+        </div>
+        <div class="header-tabs">
+            <button class="header-tab active" onclick="switchTab('editor', this)">⌨️ Éditeur</button>
+            <button class="header-tab" onclick="switchTab('data', this)">🗄️ Data</button>
+            <button class="header-tab" onclick="switchTab('tutorial', this)">📚 Exemples</button>
+        </div>
+        <div class="status-panel">
+            <div style="display:flex;align-items:center;gap:0.4rem">
+                <div class="status-light" id="statusLight"></div>
+                <span id="statusText">PRÊT</span>
+            </div>
+            <div>CARTES: <strong id="cardCount">0</strong></div>
+        </div>
+    </header>
+
+    <!-- Editor Tab -->
+    <div class="tab-content active" id="tab-editor">
+        <div class="editor-layout-new" id="editorLayout">
+            <!-- Left Column: Editor + Controls -->
+            <div class="editor-column" id="editorColumn">
+                <div class="panel flex-panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Éditeur COBOL</span>
+                        <span class="panel-badge">COBOL-85</span>
+                    </div>
+                    <div class="editor-container">
+                        <div class="line-numbers" id="lineNumbers">1</div>
+                        <textarea class="code-editor" id="codeEditor" spellcheck="false"></textarea>
+                    </div>
+                    <div class="controls">
+                        <button class="btn btn-primary" onclick="generateCards()">⚡ Perforer</button>
+                        <button class="btn btn-compile" onclick="compileOnly()" id="btnCompile" disabled>⚙ Compiler</button>
+                        <button class="btn btn-success" onclick="runProgram()" id="btnRun" disabled>▶ Exécuter</button>
+                        <button class="btn btn-step" onclick="startDebugMode()" id="btnStep" disabled>⏯ Debug</button>
+                        <button class="btn btn-stop hidden" onclick="stopDebugMode()" id="btnStopDebug">■ Stop</button>
+                        <button class="btn btn-danger" onclick="clearAll()">✕ Effacer</button>
+                        <button class="btn btn-secondary" onclick="downloadCards()">↓ Export</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resizer 1 -->
+            <div class="column-resizer" id="resizer1"></div>
+
+            <!-- Center Column: Punch Card + Card Reader -->
+            <div class="card-column" id="cardColumn">
+                <div class="panel card-reader-panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Lecteur de Cartes</span>
+                        <span class="panel-badge" id="currentCardBadge">0/0</span>
+                        <div class="reader-lights">
+                            <div class="reader-light" id="readerReady" title="Prêt"></div>
+                            <div class="reader-light reading" id="readerReading" title="Lecture"></div>
+                        </div>
+                    </div>
+                    <div class="card-display">
+                        <div class="card-feed-area" id="cardFeedArea">
+                            <div class="punch-card" id="punchCardMain">
+                                <div class="card-header">
+                                    <span>PUNCH CARD</span>
+                                    <span id="cardSeq">SEQ: 000</span>
+                                </div>
+                                <div class="card-corner"></div>
+                                <div class="card-text-row" id="cardTextRow"></div>
+                                <div class="punch-grid" id="punchGrid"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-nav">
+                        <button class="card-nav-btn" onclick="prevCard()" id="btnPrevCard">◄◄</button>
+                        <button class="card-nav-btn step-btn" onclick="stepPrevious()" id="btnStepPrev" disabled>◄ Préc</button>
+                        <span class="card-counter" id="cardNavigator">0 / 0</span>
+                        <button class="card-nav-btn step-btn" onclick="stepNext()" id="btnStepNext" disabled>Suiv ►</button>
+                        <button class="card-nav-btn" onclick="nextCard()" id="btnNextCard">►►</button>
+                    </div>
+                </div>
+                <div class="card-stations">
+                    <!-- Stacker: où tombent les cartes après perforation -->
+                    <div class="panel stacker-panel">
+                        <div class="panel-header">
+                            <span class="panel-title">Stacker (Sortie)</span>
+                            <span class="panel-badge" id="stackerCount">0</span>
+                        </div>
+                        <div class="card-stacker" id="cardStacker">
+                            <div class="empty-state">⚡ Perforez des cartes</div>
+                        </div>
+                    </div>
+                    <!-- Flèche de transfert -->
+                    <div class="transfer-arrow" id="transferArrow">
+                        <span>►</span>
+                    </div>
+                    <!-- Trémie: où on charge les cartes pour lecture -->
+                    <div class="panel hopper-panel">
+                        <div class="panel-header">
+                            <span class="panel-title">Trémie (Entrée)</span>
+                            <span class="panel-badge" id="hopperCount">0</span>
+                        </div>
+                        <div class="card-hopper" id="cardStack">
+                            <div class="empty-state">◄ Chargez les cartes</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resizer 2 -->
+            <div class="column-resizer" id="resizer2"></div>
+
+            <!-- Right Column: Console + I/O -->
+            <div class="console-column" id="consoleColumn">
+                <div class="panel console-panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Console</span>
+                        <span class="panel-badge" id="consoleBadge">IDLE</span>
+                    </div>
+                    <div class="console-output" id="compilerOutput">
+                        <div class="output-line info">█ COBOL Runtime</div>
+                        <div class="output-line info">█ Prêt.</div>
+                    </div>
+                    <div class="console-input-area" id="consoleInputArea">
+                        <span class="console-prompt">►</span>
+                        <input type="text" id="consoleInput" placeholder="Entrée..." onkeypress="if(event.key==='Enter')submitConsoleInput()">
+                        <button class="console-send-btn" onclick="submitConsoleInput()">↵</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="reference-bar">
+            <span><strong style="color:var(--ibm-red)">1-6:</strong> Seq</span>
+            <span><strong style="color:var(--ibm-blue)">7:</strong> Ind (*/-)</span>
+            <span><strong style="color:var(--phosphor-green)">8-11:</strong> Zone A</span>
+            <span><strong style="color:var(--phosphor-green)">12-72:</strong> Zone B</span>
+            <span><strong style="color:var(--phosphor-dim)">73-80:</strong> ID</span>
+            <span class="reference-sep">│</span>
+            <span id="stepModeIndicator" class="step-indicator hidden">⏯ MODE DEBUG</span>
+        </div>
+        <!-- Debug Variables Panel (hidden by default) -->
+        <div class="debug-panel hidden" id="debugPanel">
+            <div class="debug-header">
+                <span class="debug-title">Variables</span>
+                <span class="debug-line" id="debugLine">Ligne: -</span>
+                <span class="debug-stmt" id="debugStmt">-</span>
+            </div>
+            <div class="debug-variables" id="debugVariables"></div>
+            <div class="debug-controls">
+                <button class="debug-btn" onclick="debugStepNext()" id="btnDebugNext">► Suivant</button>
+                <button class="debug-btn" onclick="debugContinue()" id="btnDebugContinue">▶▶ Continuer</button>
+                <button class="debug-btn danger" onclick="stopDebugMode()">■ Arrêter</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Manager Tab -->
+    <div class="tab-content" id="tab-data">
+        <div class="dm-layout">
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">Fichiers</span>
+                </div>
+                <div class="dm-toolbar">
+                    <button class="dm-btn" onclick="createNewFile()">+ Nouveau</button>
+                    <button class="dm-btn" onclick="importFile()">📥</button>
+                    <button class="dm-btn" onclick="exportAllFiles()">📤</button>
+                </div>
+                <div class="file-list" id="fileList"></div>
+            </div>
+            <div class="panel" style="display:flex;flex-direction:column">
+                <div class="panel-header">
+                    <span class="panel-title">Enregistrements</span>
+                    <div class="panel-actions">
+                        <button class="dm-btn" onclick="addRecord()">+ Ajouter</button>
+                        <button class="dm-btn" onclick="clearRecords()">🗑️</button>
+                    </div>
+                </div>
+                <div class="record-schema" id="recordSchema">← Sélectionnez un fichier</div>
+                <div class="record-list" id="recordList"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tutorial Tab -->
+    <div class="tab-content" id="tab-tutorial">
+        <div class="library-layout">
+            <!-- Left: Categorized list -->
+            <div class="panel library-sidebar">
+                <div class="panel-header">
+                    <span class="panel-title">📚 Bibliothèque</span>
+                    <span class="panel-badge" id="exampleCount">9 exemples</span>
+                </div>
+                <div class="library-categories" id="libraryCategories">
+                    <!-- Filled by JS -->
+                </div>
+            </div>
+            <!-- Right: Code preview -->
+            <div class="panel library-preview">
+                <div class="panel-header">
+                    <span class="panel-title" id="previewTitle">Sélectionnez un exemple</span>
+                    <button class="btn btn-success btn-small" onclick="loadExample()">📝 Charger dans l'éditeur</button>
+                </div>
+                <div class="library-description" id="previewDescription">
+                    Choisissez un programme dans la liste pour voir son code source.
+                </div>
+                <div class="library-code" id="previewCode">
+                    <div class="empty-state">← Sélectionnez un exemple</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Download Modal -->
+    <div class="modal-overlay" id="downloadModal">
+        <div class="modal">
+            <h3>📥 Télécharger</h3>
+            <div class="modal-buttons">
+                <button class="btn btn-primary" onclick="downloadAs('txt')">📄 .txt</button>
+                <button class="btn btn-primary" onclick="downloadAs('cob')">💾 .cob</button>
+                <button class="btn btn-danger" onclick="closeModal('downloadModal')">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Creation Modal -->
+    <div class="modal-overlay" id="fileModal">
+        <div class="modal">
+            <h3>📁 Fichier COBOL</h3>
+            <div class="modal-form">
+                <div class="form-group">
+                    <label>Nom</label>
+                    <input type="text" id="newFileName" placeholder="CLIENTS">
+                </div>
+                <div class="form-group">
+                    <label>Organisation</label>
+                    <select id="newFileOrg">
+                        <option value="SEQUENTIAL">SEQUENTIAL</option>
+                        <option value="INDEXED">INDEXED</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Clé (INDEXED)</label>
+                    <input type="text" id="newFileKey" placeholder="CLIENT-ID">
+                </div>
+                <div class="form-group">
+                    <label>Structure</label>
+                    <textarea id="newFileRecord">01 REC.
+   05 FIELD-1 PIC X(10).
+   05 FIELD-2 PIC 9(5).</textarea>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-success" onclick="saveNewFile()">✓ Créer</button>
+                <button class="btn btn-danger" onclick="closeModal('fileModal')">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Record Modal -->
+    <div class="modal-overlay" id="recordModal">
+        <div class="modal">
+            <h3>📝 Enregistrement</h3>
+            <div class="modal-form" id="recordForm"></div>
+            <div class="modal-buttons">
+                <button class="btn btn-success" onclick="saveRecord()">✓ Sauver</button>
+                <button class="btn btn-danger" onclick="closeModal('recordModal')">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Terminal Execution Modal -->
+    <div class="modal-overlay" id="terminalModal">
+        <div class="modal terminal-modal">
+            <div class="terminal-header">
+                <span class="terminal-title">HOPPER 3270 TERMINAL</span>
+                <span class="terminal-program" id="terminalProgram">PROGRAM</span>
+                <span class="terminal-status" id="terminalStatus">RUNNING</span>
+            </div>
+            <div class="terminal-screen" id="terminalScreen">
+                <div class="terminal-output" id="terminalOutput"></div>
+            </div>
+            <div class="terminal-input-area" id="terminalInputArea">
+                <span class="terminal-prompt">READY&gt;</span>
+                <input type="text" id="terminalInput" placeholder="" autocomplete="off" onkeypress="if(event.key==='Enter')submitTerminalInput()">
+                <button class="terminal-send" onclick="submitTerminalInput()">ENTER</button>
+            </div>
+            <div class="terminal-footer">
+                <button class="btn btn-danger btn-small" onclick="closeTerminal()">DÉCONNEXION</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>

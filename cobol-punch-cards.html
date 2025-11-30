@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IBM 029 - Générateur de Cartes Perforées COBOL</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --phosphor-green: #33ff33;
+            --phosphor-dim: #1a8c1a;
+            --phosphor-glow: #00ff0055;
+            --terminal-bg: #0a0f0a;
+            --card-cream: #f5f0e1;
+            --card-shadow: #d4cfc0;
+            --punch-hole: #2a2520;
+            --ibm-blue: #1f4e79;
+            --ibm-red: #c41e3a;
+            --panel-dark: #1a1a1a;
+            --panel-border: #333;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'IBM Plex Mono', monospace;
+            background: var(--terminal-bg);
+            color: var(--phosphor-green);
+            min-height: 100vh;
+        }
+
+        body::after {
+            content: "";
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            background: repeating-linear-gradient(0deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 1px, transparent 1px, transparent 2px);
+            z-index: 9999;
+        }
+
+        .header {
+            background: linear-gradient(180deg, #2a2a2a, #1a1a1a);
+            border-bottom: 3px solid var(--ibm-blue);
+            padding: 0.6rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo { display: flex; align-items: center; gap: 0.6rem; }
+        .logo-icon {
+            width: 36px; height: 36px;
+            background: var(--ibm-blue);
+            border-radius: 4px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 0.9rem; color: white;
+        }
+        .logo-text { font-family: 'Share Tech Mono', monospace; font-size: 1.1rem; color: var(--phosphor-green); text-shadow: 0 0 10px var(--phosphor-glow); }
+        .logo-subtitle { font-size: 0.55rem; color: var(--phosphor-dim); letter-spacing: 1px; }
+
+        .header-tabs { display: flex; gap: 2px; margin-left: 1.5rem; }
+        .header-tab {
+            padding: 0.5rem 1rem;
+            background: transparent;
+            border: 1px solid transparent;
+            border-bottom: none;
+            color: var(--phosphor-dim);
+            font-family: inherit;
+            font-size: 0.7rem;
+            cursor: pointer;
+            border-radius: 4px 4px 0 0;
+        }
+        .header-tab:hover { color: var(--phosphor-green); background: rgba(51,255,51,0.05); }
+        .header-tab.active { background: var(--panel-dark); border-color: var(--panel-border); color: var(--phosphor-green); }
+
+        .status-panel { margin-left: auto; display: flex; gap: 1.5rem; align-items: center; font-size: 0.65rem; }
+        .status-light { width: 8px; height: 8px; border-radius: 50%; background: var(--phosphor-green); box-shadow: 0 0 8px var(--phosphor-green); animation: blink 2s infinite; }
+        .status-light.error { background: var(--ibm-red); box-shadow: 0 0 8px var(--ibm-red); }
+        @keyframes blink { 50% { opacity: 0.5; } }
+
+        .tab-content { display: none; padding: 1rem; }
+        .tab-content.active { display: block; }
+
+        .editor-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 1500px; margin: 0 auto; }
+        @media (max-width: 1100px) { .editor-layout { grid-template-columns: 1fr; } }
+
+        .panel { background: var(--panel-dark); border: 1px solid var(--panel-border); border-radius: 4px; overflow: hidden; }
+        .panel-header { background: linear-gradient(180deg, #333, #222); padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--panel-border); display: flex; align-items: center; gap: 0.5rem; }
+        .panel-title { font-size: 0.75rem; font-weight: 600; color: var(--phosphor-green); text-transform: uppercase; letter-spacing: 1px; }
+        .panel-badge { background: var(--ibm-blue); color: white; font-size: 0.55rem; padding: 0.1rem 0.35rem; border-radius: 2px; }
+
+        .editor-container { position: relative; height: 320px; }
+        .line-numbers { position: absolute; left: 0; top: 0; bottom: 0; width: 40px; background: #111; border-right: 1px solid var(--panel-border); padding: 0.6rem 0.3rem; text-align: right; font-size: 0.65rem; color: var(--phosphor-dim); overflow: hidden; user-select: none; line-height: 1.5; }
+        .code-editor { width: 100%; height: 100%; background: #0d0d0d; border: none; padding: 0.6rem; padding-left: 50px; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; color: var(--phosphor-green); resize: none; outline: none; line-height: 1.5; }
+
+        .card-display { padding: 0.75rem; overflow-x: auto; background: #111; }
+        .punch-card { background: var(--card-cream); width: 640px; min-height: 240px; border-radius: 3px; position: relative; box-shadow: 0 2px 0 var(--card-shadow), 0 4px 0 #c4bfb0, 0 6px 12px rgba(0,0,0,0.4); margin: 0 auto; }
+        .card-header { background: linear-gradient(90deg, var(--ibm-blue), #2a5f8f); color: white; padding: 0.25rem 0.6rem; font-size: 0.6rem; display: flex; justify-content: space-between; }
+        .card-corner { position: absolute; top: 0; right: 0; width: 20px; height: 20px; background: linear-gradient(135deg, transparent 50%, var(--card-shadow) 50%); }
+        .card-text-row { padding: 0.2rem 0.4rem; font-family: 'Share Tech Mono', monospace; font-size: 0.55rem; color: #333; background: rgba(0,0,0,0.03); border-bottom: 1px solid rgba(0,0,0,0.1); white-space: pre; overflow: hidden; }
+        .punch-grid { padding: 0.3rem; display: flex; flex-direction: column; gap: 1px; }
+        .punch-row { display: flex; gap: 1px; height: 14px; align-items: center; }
+        .row-label { width: 16px; font-size: 0.4rem; color: #666; text-align: right; padding-right: 2px; }
+        .punch-hole { width: 5.5px; height: 12px; background: var(--card-cream); border: 1px solid rgba(0,0,0,0.06); border-radius: 1px; }
+        .punch-hole.punched { background: var(--punch-hole); border-color: rgba(0,0,0,0.15); box-shadow: inset 0 1px 2px rgba(0,0,0,0.2); }
+
+        .controls { display: flex; gap: 0.4rem; padding: 0.6rem; background: #111; border-top: 1px solid var(--panel-border); flex-wrap: wrap; }
+        .btn { font-family: inherit; font-size: 0.65rem; font-weight: 600; padding: 0.4rem 0.8rem; border: none; border-radius: 3px; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; }
+        .btn-primary { background: var(--ibm-blue); color: white; }
+        .btn-primary:hover { background: #2a6090; }
+        .btn-success { background: #1a5c1a; color: var(--phosphor-green); border: 1px solid var(--phosphor-green); }
+        .btn-danger { background: #3a1a1a; color: var(--ibm-red); border: 1px solid var(--ibm-red); }
+        .btn-secondary { background: #333; color: #aaa; border: 1px solid var(--panel-border); }
+
+        .card-nav { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem; background: #111; border-top: 1px solid var(--panel-border); }
+        .card-nav-btn { background: none; border: 1px solid var(--panel-border); color: var(--phosphor-green); padding: 0.3rem 0.6rem; cursor: pointer; font-family: inherit; font-size: 0.65rem; border-radius: 3px; }
+        .card-counter { font-size: 0.7rem; color: var(--phosphor-dim); }
+
+        .card-stack { display: flex; flex-direction: column; gap: 0.4rem; max-height: 250px; overflow-y: auto; padding: 0.6rem; }
+        .card-mini { background: var(--card-cream); padding: 0.35rem 0.5rem; border-radius: 2px; font-size: 0.55rem; color: #333; font-family: 'Share Tech Mono', monospace; cursor: pointer; border-left: 3px solid var(--ibm-blue); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .card-mini:hover { transform: translateX(3px); }
+        .card-mini.active { border-left-color: var(--phosphor-green); box-shadow: 0 0 8px var(--phosphor-glow); }
+
+        .compiler-output { background: #0a0a0a; padding: 0.6rem; height: 160px; overflow-y: auto; font-size: 0.65rem; line-height: 1.3; }
+        .output-line { margin-bottom: 0.15rem; }
+        .output-line.error { color: var(--ibm-red); }
+        .output-line.success { color: var(--phosphor-green); }
+        .output-line.info { color: var(--phosphor-dim); }
+
+        .reference-bar { padding: 0.5rem 1rem; display: flex; gap: 1.2rem; flex-wrap: wrap; font-size: 0.6rem; background: #151515; border-top: 1px solid var(--panel-border); }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.active { display: flex; }
+        .modal { background: var(--panel-dark); border: 1px solid var(--panel-border); border-radius: 6px; padding: 1.25rem; max-width: 450px; width: 90%; }
+        .modal h3 { color: var(--phosphor-green); margin-bottom: 0.75rem; font-size: 0.9rem; }
+        .modal-buttons { display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; }
+        .modal-form { display: flex; flex-direction: column; gap: 0.6rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.3rem; }
+        .form-group label { font-size: 0.65rem; color: var(--phosphor-dim); }
+        .form-group input, .form-group select, .form-group textarea { background: #111; border: 1px solid var(--panel-border); padding: 0.4rem; color: var(--phosphor-green); font-family: inherit; font-size: 0.7rem; border-radius: 3px; }
+        .form-group textarea { min-height: 80px; resize: vertical; }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--phosphor-green); }
+
+        /* DATA MANAGER */
+        .dm-layout { display: grid; grid-template-columns: 280px 1fr; gap: 1rem; max-width: 1300px; margin: 0 auto; }
+        @media (max-width: 900px) { .dm-layout { grid-template-columns: 1fr; } }
+        .file-list { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.6rem; max-height: 400px; overflow-y: auto; }
+        .file-item { background: #222; border: 1px solid var(--panel-border); border-left: 3px solid var(--ibm-blue); padding: 0.5rem; border-radius: 3px; cursor: pointer; }
+        .file-item:hover { background: #2a2a2a; }
+        .file-item.selected { border-left-color: var(--phosphor-green); background: #1a2a1a; }
+        .file-name { color: #8cf; font-size: 0.75rem; font-weight: 600; margin-bottom: 0.2rem; }
+        .file-meta { display: flex; gap: 0.6rem; font-size: 0.55rem; color: #666; flex-wrap: wrap; }
+        .file-badge { background: #333; color: #888; padding: 0.1rem 0.3rem; border-radius: 2px; font-size: 0.5rem; }
+        .file-badge.seq { background: #2a3a2a; color: var(--phosphor-green); }
+        .file-badge.idx { background: #2a2a3a; color: #8cf; }
+        .file-actions { display: flex; gap: 0.3rem; margin-top: 0.4rem; }
+        .file-action-btn { padding: 0.15rem 0.35rem; background: none; border: 1px solid var(--panel-border); color: #666; font-size: 0.55rem; cursor: pointer; border-radius: 2px; }
+        .file-action-btn:hover { border-color: var(--phosphor-dim); color: var(--phosphor-green); }
+        .file-action-btn.delete:hover { border-color: var(--ibm-red); color: var(--ibm-red); }
+        .dm-toolbar { display: flex; gap: 0.4rem; padding: 0.5rem; background: #151515; flex-wrap: wrap; }
+        .dm-btn { padding: 0.35rem 0.5rem; background: #222; border: 1px solid var(--panel-border); color: #aaa; font-family: inherit; font-size: 0.6rem; cursor: pointer; border-radius: 3px; }
+        .dm-btn:hover { border-color: var(--ibm-blue); color: #8cf; }
+        .record-schema { background: #0a0a0a; padding: 0.4rem 0.6rem; font-size: 0.6rem; color: var(--phosphor-dim); border-bottom: 1px solid var(--panel-border); }
+        .record-toolbar { display: flex; gap: 0.4rem; padding: 0.4rem 0.6rem; background: #151515; align-items: center; flex-wrap: wrap; }
+        .record-toolbar select { background: #111; border: 1px solid var(--panel-border); padding: 0.35rem; color: var(--phosphor-green); font-family: inherit; font-size: 0.65rem; min-width: 120px; }
+        .record-list { flex: 1; overflow-y: auto; max-height: 300px; padding: 0.4rem; display: flex; flex-direction: column; gap: 0.2rem; }
+        .record-item { background: #111; border: 1px solid var(--panel-border); padding: 0.35rem 0.5rem; font-family: 'Share Tech Mono', monospace; font-size: 0.6rem; color: var(--phosphor-green); display: flex; justify-content: space-between; align-items: center; border-radius: 2px; }
+        .record-key { color: #8cf; margin-right: 0.6rem; }
+        .record-data { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .io-console { background: #050505; padding: 0.5rem; font-family: 'Share Tech Mono', monospace; font-size: 0.65rem; height: 150px; overflow-y: auto; }
+        .console-line { margin-bottom: 0.15rem; }
+        .console-line.input { color: #8cf; }
+        .console-line.output { color: var(--phosphor-green); }
+        .console-line.info { color: #666; }
+        .console-line.file-op { color: #cc8800; }
+        .io-input-area { display: flex; gap: 0.4rem; padding: 0.4rem; background: #111; }
+        .io-input-area input { flex: 1; background: #0a0a0a; border: 1px solid var(--panel-border); padding: 0.35rem; color: var(--phosphor-green); font-family: inherit; font-size: 0.7rem; }
+        .empty-state { text-align: center; padding: 1.5rem; color: #555; font-size: 0.7rem; }
+
+        /* TUTORIAL */
+        .tutorial-layout { max-width: 750px; margin: 0 auto; }
+        .tutorial-header { background: linear-gradient(180deg, #1a2a1a, #0a1a0a); padding: 0.75rem; border-bottom: 1px solid var(--phosphor-dim); }
+        .tutorial-header h3 { color: var(--phosphor-green); font-size: 0.9rem; margin-bottom: 0.5rem; }
+        .tutorial-progress { background: #111; height: 5px; border-radius: 3px; overflow: hidden; margin-bottom: 0.3rem; }
+        .progress-bar { height: 100%; background: linear-gradient(90deg, var(--phosphor-dim), var(--phosphor-green)); transition: width 0.3s; }
+        .progress-text { font-size: 0.6rem; color: var(--phosphor-dim); }
+        .lesson-container { padding: 1rem; }
+        .lesson-title { color: var(--phosphor-green); font-size: 0.9rem; margin-bottom: 0.6rem; display: flex; align-items: center; gap: 0.4rem; }
+        .lesson-badge { background: var(--ibm-blue); color: white; font-size: 0.5rem; padding: 0.1rem 0.35rem; border-radius: 2px; }
+        .lesson-content { color: #ccc; font-size: 0.75rem; line-height: 1.5; }
+        .lesson-content p { margin-bottom: 0.5rem; }
+        .lesson-content code { background: #0a0a0a; color: var(--phosphor-green); padding: 0.1rem 0.3rem; border-radius: 2px; font-size: 0.65rem; }
+        .code-block { background: #0a0a0a; border: 1px solid var(--panel-border); border-left: 3px solid var(--phosphor-green); padding: 0.5rem; margin: 0.5rem 0; font-family: inherit; font-size: 0.6rem; color: var(--phosphor-green); white-space: pre; overflow-x: auto; }
+        .tip-box { background: linear-gradient(135deg, #1a2a3a, #0a1a2a); border: 1px solid var(--ibm-blue); border-radius: 4px; padding: 0.5rem; margin: 0.5rem 0; }
+        .tip-box-title { color: var(--ibm-blue); font-size: 0.6rem; font-weight: 600; margin-bottom: 0.3rem; }
+        .warning-box { background: linear-gradient(135deg, #3a2a1a, #2a1a0a); border: 1px solid #cc8800; border-radius: 4px; padding: 0.5rem; margin: 0.5rem 0; }
+        .warning-box-title { color: #cc8800; font-size: 0.6rem; font-weight: 600; margin-bottom: 0.3rem; }
+        .tutorial-nav { display: flex; gap: 0.4rem; padding: 0.6rem; background: #111; border-top: 1px solid var(--panel-border); }
+        .btn-tutorial { flex: 1; padding: 0.4rem; font-family: inherit; font-size: 0.65rem; background: #222; border: 1px solid var(--panel-border); color: var(--phosphor-dim); cursor: pointer; border-radius: 3px; }
+        .btn-tutorial:hover { border-color: var(--phosphor-green); color: var(--phosphor-green); }
+        .btn-tutorial.primary { background: #1a3a1a; border-color: var(--phosphor-green); color: var(--phosphor-green); }
+        .quiz-container { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed var(--panel-border); }
+        .quiz-question { color: #fff; font-size: 0.75rem; margin-bottom: 0.5rem; }
+        .quiz-options { display: flex; flex-direction: column; gap: 0.3rem; }
+        .quiz-option { background: #1a1a1a; border: 1px solid var(--panel-border); padding: 0.4rem 0.5rem; border-radius: 3px; cursor: pointer; font-size: 0.65rem; color: #aaa; }
+        .quiz-option:hover { border-color: var(--phosphor-dim); color: var(--phosphor-green); }
+        .quiz-option.correct { background: #1a3a1a; border-color: var(--phosphor-green); color: var(--phosphor-green); }
+        .quiz-option.wrong { background: #3a1a1a; border-color: var(--ibm-red); color: var(--ibm-red); }
+        .quiz-feedback { margin-top: 0.5rem; padding: 0.4rem; border-radius: 3px; font-size: 0.65rem; display: none; }
+        .quiz-feedback.show { display: block; }
+        .quiz-feedback.success { background: #1a3a1a; color: var(--phosphor-green); }
+        .quiz-feedback.error { background: #3a1a1a; color: var(--ibm-red); }
+
+        .full-width { grid-column: 1 / -1; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: #111; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">IBM</div>
+            <div>
+                <div class="logo-text">029 KEYPUNCH</div>
+                <div class="logo-subtitle">COBOL CARD GENERATOR</div>
+            </div>
+        </div>
+        <div class="header-tabs">
+            <button class="header-tab active" onclick="switchTab('editor', this)">⌨️ Éditeur</button>
+            <button class="header-tab" onclick="switchTab('data', this)">🗄️ Data</button>
+            <button class="header-tab" onclick="switchTab('tutorial', this)">📚 Tutoriel</button>
+        </div>
+        <div class="status-panel">
+            <div style="display:flex;align-items:center;gap:0.4rem">
+                <div class="status-light" id="statusLight"></div>
+                <span id="statusText">PRÊT</span>
+            </div>
+            <div>CARTES: <strong id="cardCount">0</strong></div>
+        </div>
+    </header>
+
+    <div class="tab-content active" id="tab-editor">
+        <div class="editor-layout">
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">Éditeur COBOL</span>
+                    <span class="panel-badge">COBOL-85</span>
+                </div>
+                <div class="editor-container">
+                    <div class="line-numbers" id="lineNumbers">1</div>
+                    <textarea class="code-editor" id="codeEditor" spellcheck="false"></textarea>
+                </div>
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="generateCards()">⚡ Générer</button>
+                    <button class="btn btn-success" onclick="compileCode()">▶ Compiler</button>
+                    <button class="btn btn-danger" onclick="clearAll()">✕ Effacer</button>
+                    <button class="btn btn-secondary" onclick="downloadCards()">↓ Export</button>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">Carte Perforée</span>
+                    <span class="panel-badge" id="currentCardBadge">0/0</span>
+                </div>
+                <div class="card-display">
+                    <div class="punch-card">
+                        <div class="card-header"><span>IBM 5081</span><span id="cardSeq">SEQ: 000</span></div>
+                        <div class="card-corner"></div>
+                        <div class="card-text-row" id="cardTextRow"></div>
+                        <div class="punch-grid" id="punchGrid"></div>
+                    </div>
+                </div>
+                <div class="card-nav">
+                    <button class="card-nav-btn" onclick="prevCard()">◄</button>
+                    <span class="card-counter" id="cardNavigator">0 / 0</span>
+                    <button class="card-nav-btn" onclick="nextCard()">►</button>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-header"><span class="panel-title">Pile de Cartes</span></div>
+                <div class="card-stack" id="cardStack"><div class="empty-state">Générez des cartes</div></div>
+            </div>
+            <div class="panel">
+                <div class="panel-header"><span class="panel-title">Compilateur</span><span class="panel-badge">GnuCOBOL</span></div>
+                <div class="compiler-output" id="compilerOutput"><div class="output-line info">&gt; En attente...</div></div>
+            </div>
+        </div>
+        <div class="reference-bar">
+            <span><strong style="color:var(--ibm-red)">1-6:</strong> Seq</span>
+            <span><strong style="color:var(--ibm-blue)">7:</strong> Ind (*/-)</span>
+            <span><strong style="color:var(--phosphor-green)">8-11:</strong> Zone A</span>
+            <span><strong style="color:var(--phosphor-green)">12-72:</strong> Zone B</span>
+            <span><strong style="color:var(--phosphor-dim)">73-80:</strong> ID</span>
+        </div>
+    </div>
+
+    <div class="tab-content" id="tab-data">
+        <div class="dm-layout">
+            <div class="panel">
+                <div class="panel-header"><span class="panel-title">Fichiers</span></div>
+                <div class="dm-toolbar">
+                    <button class="dm-btn" onclick="createNewFile()">+ Nouveau</button>
+                    <button class="dm-btn" onclick="importFile()">📥</button>
+                    <button class="dm-btn" onclick="exportAllFiles()">📤</button>
+                </div>
+                <div class="file-list" id="fileList"></div>
+            </div>
+            <div class="panel" style="display:flex;flex-direction:column">
+                <div class="panel-header"><span class="panel-title">Enregistrements</span></div>
+                <div class="record-toolbar">
+                    <select id="recordFileSelect" onchange="loadFileRecords()"><option value="">-- Fichier --</option></select>
+                    <button class="dm-btn" onclick="addRecord()">+ Ajouter</button>
+                    <button class="dm-btn" onclick="clearRecords()">🗑️</button>
+                </div>
+                <div class="record-schema" id="recordSchema">Sélectionnez un fichier</div>
+                <div class="record-list" id="recordList"></div>
+            </div>
+            <div class="panel full-width">
+                <div class="panel-header"><span class="panel-title">Console I/O</span></div>
+                <div class="io-console" id="ioConsole"><div class="console-line info">&gt; Console COBOL</div></div>
+                <div class="io-input-area">
+                    <input type="text" id="ioInput" placeholder="ACCEPT..." onkeypress="if(event.key==='Enter')submitIOInput()">
+                    <button class="dm-btn" onclick="submitIOInput()">Envoyer</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-content" id="tab-tutorial">
+        <div class="tutorial-layout">
+            <div class="panel">
+                <div class="tutorial-header">
+                    <h3>🎓 Apprendre COBOL</h3>
+                    <div class="tutorial-progress"><div class="progress-bar" id="progressBar" style="width:9%"></div></div>
+                    <span class="progress-text" id="progressText">Leçon 1/11</span>
+                </div>
+                <div class="lesson-container" id="lessonContainer"></div>
+                <div class="tutorial-nav">
+                    <button class="btn-tutorial" onclick="prevLesson()">◄ Préc</button>
+                    <button class="btn-tutorial primary" onclick="loadExample()">📝 Charger</button>
+                    <button class="btn-tutorial" onclick="nextLesson()">Suiv ►</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="downloadModal">
+        <div class="modal">
+            <h3>📥 Télécharger</h3>
+            <div class="modal-buttons">
+                <button class="btn btn-primary" onclick="downloadAs('txt')">📄 .txt</button>
+                <button class="btn btn-primary" onclick="downloadAs('cob')">💾 .cob</button>
+                <button class="btn btn-danger" onclick="closeModal('downloadModal')">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="fileModal">
+        <div class="modal">
+            <h3>📁 Fichier COBOL</h3>
+            <div class="modal-form">
+                <div class="form-group"><label>Nom</label><input type="text" id="newFileName" placeholder="CLIENTS"></div>
+                <div class="form-group"><label>Organisation</label><select id="newFileOrg"><option value="SEQUENTIAL">SEQUENTIAL</option><option value="INDEXED">INDEXED</option></select></div>
+                <div class="form-group"><label>Clé (INDEXED)</label><input type="text" id="newFileKey" placeholder="CLIENT-ID"></div>
+                <div class="form-group"><label>Structure</label><textarea id="newFileRecord">01 REC.
+   05 FIELD-1 PIC X(10).
+   05 FIELD-2 PIC 9(5).</textarea></div>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-success" onclick="saveNewFile()">✓ Créer</button>
+                <button class="btn btn-danger" onclick="closeModal('fileModal')">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="recordModal">
+        <div class="modal">
+            <h3>📝 Enregistrement</h3>
+            <div class="modal-form" id="recordForm"></div>
+            <div class="modal-buttons">
+                <button class="btn btn-success" onclick="saveRecord()">✓ Sauver</button>
+                <button class="btn btn-danger" onclick="closeModal('recordModal')">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+let cards=[], currentCardIndex=0, cobolFiles={}, currentDMFile=null, editingRecordIndex=-1, currentLesson=0;
+const PUNCH_ENCODING={'':[],'A':[12,1],'B':[12,2],'C':[12,3],'D':[12,4],'E':[12,5],'F':[12,6],'G':[12,7],'H':[12,8],'I':[12,9],'J':[11,1],'K':[11,2],'L':[11,3],'M':[11,4],'N':[11,5],'O':[11,6],'P':[11,7],'Q':[11,8],'R':[11,9],'S':[0,2],'T':[0,3],'U':[0,4],'V':[0,5],'W':[0,6],'X':[0,7],'Y':[0,8],'Z':[0,9],'0':[0],'1':[1],'2':[2],'3':[3],'4':[4],'5':[5],'6':[6],'7':[7],'8':[8],'9':[9],'.':[12,3,8],',':[0,3,8],"'":[5,8],'(':[0,5,8],')':[12,5,8],'+':[12],'-':[11],'*':[11,4,8],'/':[0,1],'=':[3,8],'$':[11,3,8],' ':[]};
+const ROW_LABELS=['12','11','0','1','2','3','4','5','6','7','8','9'];
+
+document.addEventListener('DOMContentLoaded',()=>{initEditor();initDataManager();initTutorial();});
+
+function switchTab(name,btn){
+    document.querySelectorAll('.header-tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-'+name).classList.add('active');
+}
+function closeModal(id){document.getElementById(id).classList.remove('active');}
+
+const codeEditor=document.getElementById('codeEditor');
+function initEditor(){
+    codeEditor.addEventListener('input',updateLineNumbers);
+    codeEditor.addEventListener('scroll',()=>document.getElementById('lineNumbers').scrollTop=codeEditor.scrollTop);
+    codeEditor.value=`       IDENTIFICATION DIVISION.
+       PROGRAM-ID. HELLO.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 WS-MSG PIC X(20) VALUE 'HELLO WORLD!'.
+       PROCEDURE DIVISION.
+           DISPLAY WS-MSG.
+           STOP RUN.`;
+    updateLineNumbers();
+    renderPunchCard('');
+}
+function updateLineNumbers(){
+    const n=codeEditor.value.split('\n').length;
+    document.getElementById('lineNumbers').innerHTML=Array.from({length:n},(_,i)=>i+1).join('<br>');
+}
+function renderPunchCard(text){
+    const t=text.toUpperCase().padEnd(80,' ').substring(0,80);
+    document.getElementById('cardTextRow').textContent=t;
+    let h='';
+    for(let r=0;r<12;r++){
+        h+=`<div class="punch-row"><span class="row-label">${ROW_LABELS[r]}</span>`;
+        for(let c=0;c<80;c++){
+            const ch=t[c],enc=PUNCH_ENCODING[ch]||[],punched=enc.includes(parseInt(ROW_LABELS[r]));
+            h+=`<div class="punch-hole${punched?' punched':''}"></div>`;
+        }
+        h+='</div>';
+    }
+    document.getElementById('punchGrid').innerHTML=h;
+}
+function generateCards(){
+    const code=codeEditor.value;
+    if(!code.trim())return showOutput('error','Aucun code');
+    cards=code.split('\n').map((l,i)=>({seq:String(i+1).padStart(6,'0'),text:l.padEnd(80,' ').substring(0,80),original:l}));
+    updateCardStack();showCard(0);
+    document.getElementById('cardCount').textContent=cards.length;
+    showOutput('success',cards.length+' carte(s)');
+    setStatus('ok',cards.length+' CARTES');
+}
+function updateCardStack(){
+    const s=document.getElementById('cardStack');
+    if(!cards.length){s.innerHTML='<div class="empty-state">Générez des cartes</div>';return;}
+    s.innerHTML=cards.map((c,i)=>`<div class="card-mini${i===currentCardIndex?' active':''}" onclick="showCard(${i})"><strong>${c.seq}</strong> ${c.original.substring(0,45)}</div>`).join('');
+}
+function showCard(i){
+    if(!cards.length)return;
+    currentCardIndex=Math.max(0,Math.min(i,cards.length-1));
+    const c=cards[currentCardIndex];
+    renderPunchCard(c.text);
+    document.getElementById('cardSeq').textContent='SEQ: '+c.seq;
+    document.getElementById('currentCardBadge').textContent=(currentCardIndex+1)+'/'+cards.length;
+    document.getElementById('cardNavigator').textContent=(currentCardIndex+1)+' / '+cards.length;
+    updateCardStack();
+}
+function prevCard(){showCard(currentCardIndex-1);}
+function nextCard(){showCard(currentCardIndex+1);}
+function compileCode(){
+    const code=codeEditor.value;
+    if(!code.trim())return showOutput('error','Aucun code');
+    setStatus('busy','COMPILATION...');
+    showOutput('info','> cobc -x program.cob');
+    setTimeout(()=>{
+        const errs=[];
+        const up=code.toUpperCase();
+        if(!up.includes('IDENTIFICATION DIVISION'))errs.push('IDENTIFICATION DIVISION manquante');
+        if(!up.includes('PROCEDURE DIVISION'))errs.push('PROCEDURE DIVISION manquante');
+        code.split('\n').forEach((l,i)=>{if(l.length>80)errs.push('Ligne '+(i+1)+': >80 col');});
+        if(errs.length){errs.forEach(e=>showOutput('error',e));setStatus('error','ERREUR');}
+        else{showOutput('success','> Compilation OK');setStatus('ok','COMPILÉ');}
+    },400);
+}
+function showOutput(type,msg){
+    const o=document.getElementById('compilerOutput'),d=document.createElement('div');
+    d.className='output-line '+type;d.textContent=msg;o.appendChild(d);o.scrollTop=o.scrollHeight;
+}
+function setStatus(type,text){
+    document.getElementById('statusLight').className='status-light'+(type==='error'?' error':'');
+    document.getElementById('statusText').textContent=text;
+}
+function clearAll(){
+    codeEditor.value='';updateLineNumbers();cards=[];currentCardIndex=0;updateCardStack();renderPunchCard('');
+    document.getElementById('cardCount').textContent='0';
+    document.getElementById('currentCardBadge').textContent='0/0';
+    document.getElementById('cardNavigator').textContent='0 / 0';
+    document.getElementById('compilerOutput').innerHTML='<div class="output-line info">> Effacé</div>';
+    setStatus('ok','PRÊT');
+}
+function downloadCards(){if(!cards.length)return;document.getElementById('downloadModal').classList.add('active');}
+function downloadAs(fmt){
+    const content=cards.map(c=>c.text).join('\n'),blob=new Blob([content],{type:'text/plain'}),a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);a.download='program.'+fmt;a.click();closeModal('downloadModal');
+}
+
+function initDataManager(){
+    const s=localStorage.getItem('cobolFiles');
+    cobolFiles=s?JSON.parse(s):{
+        'CLIENTS':{name:'CLIENTS',organization:'INDEXED',key:'CLIENT-ID',record:'01 REC.\n   05 CLIENT-ID PIC 9(6).\n   05 CLIENT-NOM PIC X(20).',fields:[{name:'CLIENT-ID',pic:'9(6)',length:6},{name:'CLIENT-NOM',pic:'X(20)',length:20}],records:[{'CLIENT-ID':'000001','CLIENT-NOM':'DUPONT JEAN'},{'CLIENT-ID':'000002','CLIENT-NOM':'MARTIN MARIE'}]},
+        'PRODUITS':{name:'PRODUITS',organization:'SEQUENTIAL',key:null,record:'01 REC.\n   05 PROD-CODE PIC X(8).\n   05 PROD-NOM PIC X(20).',fields:[{name:'PROD-CODE',pic:'X(8)',length:8},{name:'PROD-NOM',pic:'X(20)',length:20}],records:[{'PROD-CODE':'CLV-001','PROD-NOM':'CLAVIER'}]}
+    };
+    renderFileList();updateFileSelect();
+}
+function saveFiles(){localStorage.setItem('cobolFiles',JSON.stringify(cobolFiles));}
+function renderFileList(){
+    const l=document.getElementById('fileList'),files=Object.values(cobolFiles);
+    if(!files.length){l.innerHTML='<div class="empty-state">Aucun fichier</div>';return;}
+    l.innerHTML=files.map(f=>{
+        const cls=f.organization==='SEQUENTIAL'?'seq':'idx';
+        return`<div class="file-item${currentDMFile===f.name?' selected':''}" onclick="selectFile('${f.name}')">
+            <div class="file-name">${f.name}</div>
+            <div class="file-meta"><span class="file-badge ${cls}">${f.organization}</span><span>📄 ${f.records.length}</span>${f.key?'<span>🔑 '+f.key+'</span>':''}</div>
+            <div class="file-actions">
+                <button class="file-action-btn" onclick="event.stopPropagation();generateFileCode('${f.name}')">📝</button>
+                <button class="file-action-btn" onclick="event.stopPropagation();exportFile('${f.name}')">📤</button>
+                <button class="file-action-btn delete" onclick="event.stopPropagation();deleteFile('${f.name}')">🗑️</button>
+            </div></div>`;
+    }).join('');
+}
+function updateFileSelect(){
+    document.getElementById('recordFileSelect').innerHTML='<option value="">-- Fichier --</option>'+Object.keys(cobolFiles).map(n=>'<option value="'+n+'">'+n+'</option>').join('');
+}
+function selectFile(n){currentDMFile=n;renderFileList();document.getElementById('recordFileSelect').value=n;loadFileRecords();}
+function loadFileRecords(){
+    const n=document.getElementById('recordFileSelect').value,schema=document.getElementById('recordSchema'),list=document.getElementById('recordList');
+    if(!n||!cobolFiles[n]){schema.textContent='Sélectionnez un fichier';list.innerHTML='';currentDMFile=null;return;}
+    currentDMFile=n;const f=cobolFiles[n];
+    schema.innerHTML='<strong>Schema:</strong> '+f.fields.map(x=>x.name+'('+x.pic+')').join(' | ');
+    if(!f.records.length){list.innerHTML='<div class="empty-state">Vide</div>';return;}
+    list.innerHTML=f.records.map((r,i)=>{
+        const key=f.key?r[f.key]:String(i+1),data=f.fields.map(x=>r[x.name]||'').join(' ');
+        return`<div class="record-item"><span class="record-key">[${key}]</span><span class="record-data">${data}</span><div class="record-actions"><button class="file-action-btn" onclick="editRecord(${i})">✏️</button><button class="file-action-btn delete" onclick="deleteRecord(${i})">🗑️</button></div></div>`;
+    }).join('');
+}
+function createNewFile(){
+    document.getElementById('newFileName').value='';
+    document.getElementById('newFileOrg').value='SEQUENTIAL';
+    document.getElementById('newFileKey').value='';
+    document.getElementById('newFileRecord').value='01 REC.\n   05 FIELD-1 PIC X(10).\n   05 FIELD-2 PIC 9(5).';
+    document.getElementById('fileModal').classList.add('active');
+}
+function saveNewFile(){
+    const name=document.getElementById('newFileName').value.toUpperCase().trim(),org=document.getElementById('newFileOrg').value,key=document.getElementById('newFileKey').value.toUpperCase().trim(),rec=document.getElementById('newFileRecord').value;
+    if(!name)return alert('Nom requis');
+    const fields=[];
+    rec.split('\n').forEach(line=>{const m=line.match(/\d+\s+(\S+)\s+PIC\s+(\S+)/i);if(m){const nm=m[1].replace('.',''),pic=m[2].replace('.','');let len=1;const lm=pic.match(/[X9]\((\d+)\)/);if(lm)len=parseInt(lm[1]);fields.push({name:nm,pic,length:len});}});
+    cobolFiles[name]={name,organization:org,key:org==='INDEXED'?(key||fields[0]?.name):null,record:rec,fields,records:[]};
+    saveFiles();renderFileList();updateFileSelect();closeModal('fileModal');logIO('file-op','CRÉÉ: '+name);
+}
+function deleteFile(n){if(confirm('Supprimer '+n+'?')){delete cobolFiles[n];saveFiles();renderFileList();updateFileSelect();if(currentDMFile===n){currentDMFile=null;loadFileRecords();}logIO('file-op','SUPPRIMÉ: '+n);}}
+function addRecord(){
+    if(!currentDMFile)return alert('Sélectionnez un fichier');
+    editingRecordIndex=-1;const f=cobolFiles[currentDMFile];
+    document.getElementById('recordForm').innerHTML=f.fields.map(x=>'<div class="form-group"><label>'+x.name+' ('+x.pic+')</label><input type="text" id="field-'+x.name+'" maxlength="'+x.length+'"></div>').join('');
+    document.getElementById('recordModal').classList.add('active');
+}
+function editRecord(i){
+    if(!currentDMFile)return;editingRecordIndex=i;const f=cobolFiles[currentDMFile],r=f.records[i];
+    document.getElementById('recordForm').innerHTML=f.fields.map(x=>'<div class="form-group"><label>'+x.name+'</label><input type="text" id="field-'+x.name+'" maxlength="'+x.length+'" value="'+(r[x.name]||'')+'"></div>').join('');
+    document.getElementById('recordModal').classList.add('active');
+}
+function saveRecord(){
+    if(!currentDMFile)return;const f=cobolFiles[currentDMFile],rec={};
+    f.fields.forEach(x=>{let v=document.getElementById('field-'+x.name).value.toUpperCase();v=x.pic.includes('9')?v.padStart(x.length,'0'):v.padEnd(x.length,' ');rec[x.name]=v.substring(0,x.length);});
+    if(editingRecordIndex>=0)f.records[editingRecordIndex]=rec;else f.records.push(rec);
+    saveFiles();loadFileRecords();closeModal('recordModal');logIO('file-op',editingRecordIndex>=0?'REWRITE':'WRITE');
+}
+function deleteRecord(i){if(!currentDMFile)return;cobolFiles[currentDMFile].records.splice(i,1);saveFiles();loadFileRecords();logIO('file-op','DELETE');}
+function clearRecords(){if(!currentDMFile||!confirm('Vider?'))return;cobolFiles[currentDMFile].records=[];saveFiles();loadFileRecords();}
+function generateFileCode(n){
+    const f=cobolFiles[n];
+    codeEditor.value=`       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ${n}-PROG.
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT ${n} ASSIGN TO '${n}.DAT'
+               ORGANIZATION IS ${f.organization}${f.key?`
+               ACCESS MODE IS DYNAMIC
+               RECORD KEY IS ${f.key}`:''}.
+       DATA DIVISION.
+       FILE SECTION.
+       FD ${n}.
+       ${f.record}
+       WORKING-STORAGE SECTION.
+       01 WS-EOF PIC X VALUE 'N'.
+       PROCEDURE DIVISION.
+           OPEN INPUT ${n}.
+           PERFORM UNTIL WS-EOF = 'Y'
+               READ ${n}
+                   AT END MOVE 'Y' TO WS-EOF
+                   NOT AT END DISPLAY ${f.fields[0].name}
+               END-READ
+           END-PERFORM.
+           CLOSE ${n}.
+           STOP RUN.`;
+    updateLineNumbers();
+    document.querySelectorAll('.header-tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.header-tab')[0].classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+    document.getElementById('tab-editor').classList.add('active');
+    generateCards();
+}
+function exportFile(n){
+    const f=cobolFiles[n],content=f.records.map(r=>f.fields.map(x=>(r[x.name]||'').padEnd(x.length,' ')).join('')).join('\n');
+    const blob=new Blob([content],{type:'text/plain'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=n+'.DAT';a.click();
+}
+function exportAllFiles(){const blob=new Blob([JSON.stringify(cobolFiles,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='cobol-files.json';a.click();}
+function importFile(){
+    const inp=document.createElement('input');inp.type='file';inp.accept='.json';
+    inp.onchange=e=>{const reader=new FileReader();reader.onload=ev=>{try{Object.assign(cobolFiles,JSON.parse(ev.target.result));saveFiles();renderFileList();updateFileSelect();}catch(err){alert('Erreur');}};reader.readAsText(e.target.files[0]);};
+    inp.click();
+}
+function logIO(type,msg){const c=document.getElementById('ioConsole'),d=document.createElement('div');d.className='console-line '+type;d.textContent='> '+msg;c.appendChild(d);c.scrollTop=c.scrollHeight;}
+function submitIOInput(){const inp=document.getElementById('ioInput');if(inp.value.trim()){logIO('input',inp.value);inp.value='';}}
+
+const lessons=[
+{title:"Introduction",badge:"BASES",content:"<p><strong>COBOL</strong> (1959) gère 95% des transactions ATM mondiales !</p><div class='tip-box'><div class='tip-box-title'>💡</div><p>Grace Hopper voulait un langage lisible comme l'anglais.</p></div>",example:"      * BIENVENUE EN COBOL !",quiz:{q:"Année?",opts:["1949","1959","1969"],correct:1}},
+{title:"80 colonnes",badge:"FORMAT",content:"<p>Une carte = <strong>80 colonnes</strong></p><div class='code-block'>1-6: Séq | 7: Ind | 8-72: Code</div><div class='warning-box'><div class='warning-box-title'>⚠️</div><p>Indentation obligatoire !</p></div>",example:"000001* COMMENTAIRE\n000002 IDENTIFICATION DIVISION.",quiz:{q:"Col commentaire?",opts:["1","6","7"],correct:2}},
+{title:"4 DIVISIONS",badge:"STRUCTURE",content:"<div class='code-block'>IDENTIFICATION → Qui?\nENVIRONMENT → Fichiers\nDATA → Variables\nPROCEDURE → Code</div>",example:"       IDENTIFICATION DIVISION.\n       PROGRAM-ID. TEST.\n       PROCEDURE DIVISION.\n           STOP RUN.",quiz:{q:"Variables?",opts:["IDENTIFICATION","DATA","PROCEDURE"],correct:1}},
+{title:"Variables PIC",badge:"DATA",content:"<div class='code-block'>PIC X(30) → 30 caractères\nPIC 9(5)V99 → décimal\nPIC S9(7) → signé</div>",example:"       01 WS-NOM PIC X(20) VALUE 'TEST'.",quiz:{q:"9(5)V99?",opts:["5 car","5 ent + 2 déc","7 ent"],correct:1}},
+{title:"Instructions",badge:"CODE",content:"<div class='code-block'>DISPLAY 'HELLO'\nMOVE 'X' TO VAR\nADD 1 TO CPT\nSTOP RUN</div>",example:"           MOVE 10 TO WS-A.\n           ADD 5 TO WS-A.\n           DISPLAY WS-A.",quiz:{q:"Affectation?",opts:["SET X=5","MOVE 5 TO X","X:=5"],correct:1}},
+{title:"IF/ELSE",badge:"LOGIQUE",content:"<div class='code-block'>IF AGE > 18\n  DISPLAY 'OK'\nELSE\n  DISPLAY 'NON'\nEND-IF.</div>",example:"       IF WS-A > 10\n           DISPLAY 'GRAND'\n       END-IF.",quiz:{q:"Fin IF?",opts:["ENDIF","END IF","END-IF"],correct:2}},
+{title:"PERFORM",badge:"BOUCLES",content:"<div class='code-block'>PERFORM 5 TIMES\nPERFORM UNTIL EOF='Y'\nPERFORM VARYING I FROM 1 BY 1</div>",example:"       PERFORM VARYING WS-I FROM 1 BY 1\n           UNTIL WS-I > 5\n           DISPLAY WS-I\n       END-PERFORM.",quiz:{q:"Boucle FOR?",opts:["FOR","PERFORM VARYING","LOOP"],correct:1}},
+{title:"Fichiers SEQ",badge:"FICHIERS",content:"<p>Lecture ligne par ligne</p><div class='code-block'>OPEN INPUT fic\nREAD fic AT END...\nCLOSE fic</div>",example:"       SELECT CLIENTS ASSIGN TO 'CLIENTS.DAT'\n           ORGANIZATION IS SEQUENTIAL.",quiz:{q:"AT END?",opts:["Termine","Ferme","Fin fichier"],correct:2}},
+{title:"Fichiers IDX",badge:"FICHIERS",content:"<p>Accès par clé</p><div class='code-block'>ORGANIZATION IS INDEXED\nRECORD KEY IS ID</div>",example:"       READ CLIENTS\n           INVALID KEY DISPLAY 'NON TROUVE'\n       END-READ.",quiz:{q:"Accès mixte?",opts:["SEQUENTIAL","RANDOM","DYNAMIC"],correct:2}},
+{title:"CRUD",badge:"OPÉRATIONS",content:"<div class='code-block'>READ → Lire\nWRITE → Créer\nREWRITE → Modifier\nDELETE → Supprimer</div>",example:"       OPEN I-O CLIENTS.\n       REWRITE CLIENT-REC.",quiz:{q:"Mode modifier?",opts:["INPUT","OUTPUT","I-O"],correct:2}},
+{title:"Complet !",badge:"FINAL",content:"<div class='tip-box'><div class='tip-box-title'>🎉 Bravo !</div><p>✓ DIVISIONS ✓ PIC ✓ IF ✓ PERFORM ✓ Fichiers</p></div>",example:"       IDENTIFICATION DIVISION.\n       PROGRAM-ID. FINAL.\n       PROCEDURE DIVISION.\n           DISPLAY 'BRAVO!'.\n           STOP RUN.",quiz:{q:"Vous savez...",opts:["Lire","Écrire","Les deux!"],correct:2}}
+];
+function initTutorial(){renderLesson();}
+function renderLesson(){
+    const l=lessons[currentLesson],pct=((currentLesson+1)/lessons.length)*100;
+    document.getElementById('progressBar').style.width=pct+'%';
+    document.getElementById('progressText').textContent='Leçon '+(currentLesson+1)+'/'+lessons.length;
+    let h='<h4 class="lesson-title"><span class="lesson-badge">'+l.badge+'</span>'+l.title+'</h4><div class="lesson-content">'+l.content+'</div>';
+    if(l.quiz)h+='<div class="quiz-container"><div class="quiz-question">🧠 '+l.quiz.q+'</div><div class="quiz-options">'+l.quiz.opts.map((o,i)=>'<div class="quiz-option" onclick="checkQuiz('+i+','+l.quiz.correct+')">'+o+'</div>').join('')+'</div><div class="quiz-feedback" id="quizFeedback"></div></div>';
+    document.getElementById('lessonContainer').innerHTML=h;
+}
+function checkQuiz(sel,correct){
+    document.querySelectorAll('.quiz-option').forEach((o,i)=>{o.classList.remove('correct','wrong');if(i===correct)o.classList.add('correct');else if(i===sel)o.classList.add('wrong');o.style.pointerEvents='none';});
+    const fb=document.getElementById('quizFeedback');fb.textContent=sel===correct?'✓ Correct!':'✗ Raté';fb.className='quiz-feedback show '+(sel===correct?'success':'error');
+}
+function prevLesson(){if(currentLesson>0){currentLesson--;renderLesson();}}
+function nextLesson(){if(currentLesson<lessons.length-1){currentLesson++;renderLesson();}}
+function loadExample(){
+    codeEditor.value=lessons[currentLesson].example||'';updateLineNumbers();
+    document.querySelectorAll('.header-tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.header-tab')[0].classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+    document.getElementById('tab-editor').classList.add('active');
+    generateCards();
+}
+</script>
+</body>
+</html>
