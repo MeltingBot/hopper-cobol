@@ -475,6 +475,10 @@ export function compileOnly() {
                 terminalOutput(`ACCEPT ${varName}:`, 'system');
                 setTerminalWaiting(true);
             },
+            onAcceptWithOptions: (varName, options) => {
+                terminalAcceptWithOptions(varName, options);
+                setTerminalWaiting(true);
+            },
             onError: (err) => {
                 terminalOutput(err, 'error');
                 showOutput('error', err);
@@ -771,6 +775,52 @@ function terminalOutputWithOptions(msg, options) {
 }
 
 /**
+ * Handle ACCEPT with screen control options
+ * Shows input field at specified screen position
+ */
+function terminalAcceptWithOptions(varName, options) {
+    const modal = document.getElementById('terminalModal');
+
+    // Only if terminal is open
+    if (!modal?.classList.contains('active')) return;
+
+    // Enable screen mode if not already enabled
+    if (!screenModeEnabled) {
+        initScreenBuffer();
+        document.getElementById('terminalScreen')?.classList.add('screen-mode');
+    }
+
+    // Position cursor for input
+    if (options.line) {
+        screenCursorLine = options.line;
+    }
+    if (options.column) {
+        screenCursorCol = options.column;
+    }
+
+    // Show input prompt marker at position
+    writeToScreen('_', {
+        line: screenCursorLine,
+        column: screenCursorCol,
+        blink: true,
+        reverseVideo: options.reverseVideo || false,
+        highlight: options.highlight || false
+    });
+
+    renderScreenBuffer();
+
+    // Store accept options for when input is received
+    window.currentAcceptOptions = {
+        line: screenCursorLine,
+        column: screenCursorCol,
+        secure: options.secure || false,
+        size: options.size,
+        highlight: options.highlight || false,
+        reverseVideo: options.reverseVideo || false
+    };
+}
+
+/**
  * Set terminal waiting state
  */
 function setTerminalWaiting(waiting) {
@@ -813,8 +863,23 @@ export function submitTerminalInput() {
     const value = input.value.trim();
     if (!value && !cobolRuntime?.isWaitingForInput()) return;
 
-    // Show input in terminal
-    terminalOutput(value, 'input');
+    // Check if we have screen control options for this accept
+    if (window.currentAcceptOptions && screenModeEnabled) {
+        const opts = window.currentAcceptOptions;
+        // Write the input value at the accept position
+        writeToScreen(opts.secure ? '*'.repeat(value.length) : value, {
+            line: opts.line,
+            column: opts.column,
+            highlight: opts.highlight,
+            reverseVideo: opts.reverseVideo
+        });
+        renderScreenBuffer();
+        // Clear the stored options
+        window.currentAcceptOptions = null;
+    } else {
+        // Show input in terminal (classic mode)
+        terminalOutput(value, 'input');
+    }
 
     // Provide to runtime
     if (cobolRuntime && cobolRuntime.isWaitingForInput()) {

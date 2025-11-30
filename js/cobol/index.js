@@ -18,6 +18,7 @@ export class CobolRuntime {
             onDisplay: options.onDisplay || console.log,
             onDisplayWithOptions: options.onDisplayWithOptions || null, // Screen control display
             onAccept: options.onAccept || (() => {}),
+            onAcceptWithOptions: options.onAcceptWithOptions || null, // Screen control accept
             onError: options.onError || console.error,
             onStatus: options.onStatus || (() => {}),
             onStep: options.onStep || null, // Debug step callback

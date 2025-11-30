@@ -905,6 +905,23 @@ class Runtime {
         });
     }
 
+    // Input with screen control options
+    async acceptWithOptions(variableName, options) {
+        this.waitingForInput = true;
+        this.inputTarget = variableName;
+
+        if (this.callbacks.onAcceptWithOptions) {
+            this.callbacks.onAcceptWithOptions(variableName, options);
+        } else if (this.callbacks.onAccept) {
+            // Fallback to basic accept
+            this.callbacks.onAccept(variableName);
+        }
+
+        return new Promise((resolve) => {
+            this.inputResolve = resolve;
+        });
+    }
+
     provideInput(value) {
         if (this.waitingForInput && this.inputResolve) {
             this.setVariable(this.inputTarget, value);
@@ -1369,7 +1386,33 @@ export class Interpreter {
      * Execute ACCEPT statement
      */
     async executeAccept(stmt) {
-        await this.runtime.accept(stmt.target);
+        // Check if screen control options are present
+        const hasScreenControl = stmt.line !== null || stmt.column !== null ||
+            stmt.highlight || stmt.blink || stmt.reverseVideo || stmt.underline ||
+            stmt.secure || stmt.required || stmt.full || stmt.auto ||
+            stmt.foregroundColor !== null || stmt.backgroundColor !== null;
+
+        if (hasScreenControl) {
+            const options = {
+                line: stmt.line,
+                column: stmt.column,
+                highlight: stmt.highlight || false,
+                blink: stmt.blink || false,
+                reverseVideo: stmt.reverseVideo || false,
+                underline: stmt.underline || false,
+                secure: stmt.secure || false,
+                required: stmt.required || false,
+                full: stmt.full || false,
+                auto: stmt.auto || false,
+                foregroundColor: stmt.foregroundColor,
+                backgroundColor: stmt.backgroundColor,
+                size: stmt.size,
+                cursor: stmt.cursor,
+            };
+            await this.runtime.acceptWithOptions(stmt.target, options);
+        } else {
+            await this.runtime.accept(stmt.target);
+        }
         // Reset loop counter after user input (prevents false infinite loop detection)
         this.loopCounter = 0;
     }
