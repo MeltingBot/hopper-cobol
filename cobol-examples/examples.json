@@ -1,9 +1,16 @@
 [
   {
+    "id": "demo-ecran",
+    "title": "Demo Screen Control",
+    "category": "ECRAN",
+    "description": "Démonstration des extensions screen control IBM 3270: LINE, POSITION, HIGHLIGHT, BLINK, REVERSE-VIDEO.",
+    "file": "demo-ecran.cob"
+  },
+  {
     "id": "gestion-clients",
     "title": "Gestion Clients",
     "category": "FICHIERS",
-    "description": "CRUD complet sur un fichier clients indexé. Créer, lire, modifier, supprimer des clients.",
+    "description": "CRUD complet sur un fichier clients indexé avec interface IBM 3270.",
     "file": "gestion-clients.cob"
   },
   {
@@ -38,7 +45,7 @@
     "id": "banque-comptes",
     "title": "Banque - Comptes",
     "category": "BANQUE",
-    "description": "Gestion de comptes bancaires: consultation, dépôt, retrait, virement.",
+    "description": "Gestion de comptes bancaires avec interface IBM 3270: consultation, dépôt, retrait, virement.",
     "file": "banque-comptes.cob"
   },
   {
