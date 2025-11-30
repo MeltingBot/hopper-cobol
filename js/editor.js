@@ -28,6 +28,186 @@ let debugMode = false;
 let debugInterpreter = null;
 let previousVariables = {};
 
+// Screen control state (IBM 3270 style - 24 lines x 80 columns)
+const SCREEN_ROWS = 24;
+const SCREEN_COLS = 80;
+let screenBuffer = null;     // 2D array of {char, highlight, blink, reverse, underline, fgColor, bgColor}
+let screenCursorLine = 1;    // 1-based line position
+let screenCursorCol = 1;     // 1-based column position
+let screenModeEnabled = false;
+
+/**
+ * Initialize screen buffer for screen control mode
+ */
+function initScreenBuffer() {
+    screenBuffer = [];
+    for (let row = 0; row < SCREEN_ROWS; row++) {
+        screenBuffer[row] = [];
+        for (let col = 0; col < SCREEN_COLS; col++) {
+            screenBuffer[row][col] = {
+                char: ' ',
+                highlight: false,
+                blink: false,
+                reverse: false,
+                underline: false,
+                fgColor: null,
+                bgColor: null
+            };
+        }
+    }
+    screenCursorLine = 1;
+    screenCursorCol = 1;
+    screenModeEnabled = true;
+}
+
+/**
+ * Clear screen buffer
+ */
+function clearScreen() {
+    if (!screenBuffer) initScreenBuffer();
+    for (let row = 0; row < SCREEN_ROWS; row++) {
+        for (let col = 0; col < SCREEN_COLS; col++) {
+            screenBuffer[row][col] = {
+                char: ' ',
+                highlight: false,
+                blink: false,
+                reverse: false,
+                underline: false,
+                fgColor: null,
+                bgColor: null
+            };
+        }
+    }
+    screenCursorLine = 1;
+    screenCursorCol = 1;
+}
+
+/**
+ * Erase from cursor to end of screen (EOS)
+ */
+function eraseToEndOfScreen() {
+    if (!screenBuffer) return;
+    const startRow = screenCursorLine - 1;
+    const startCol = screenCursorCol - 1;
+
+    // Erase rest of current line
+    for (let col = startCol; col < SCREEN_COLS; col++) {
+        screenBuffer[startRow][col] = { char: ' ', highlight: false, blink: false, reverse: false, underline: false, fgColor: null, bgColor: null };
+    }
+    // Erase all following lines
+    for (let row = startRow + 1; row < SCREEN_ROWS; row++) {
+        for (let col = 0; col < SCREEN_COLS; col++) {
+            screenBuffer[row][col] = { char: ' ', highlight: false, blink: false, reverse: false, underline: false, fgColor: null, bgColor: null };
+        }
+    }
+}
+
+/**
+ * Erase from cursor to end of line (EOL)
+ */
+function eraseToEndOfLine() {
+    if (!screenBuffer) return;
+    const row = screenCursorLine - 1;
+    const startCol = screenCursorCol - 1;
+
+    for (let col = startCol; col < SCREEN_COLS; col++) {
+        screenBuffer[row][col] = { char: ' ', highlight: false, blink: false, reverse: false, underline: false, fgColor: null, bgColor: null };
+    }
+}
+
+/**
+ * Write text to screen buffer at specified position
+ */
+function writeToScreen(text, options = {}) {
+    if (!screenBuffer) initScreenBuffer();
+
+    const line = options.line || screenCursorLine;
+    const col = options.column || screenCursorCol;
+    const row = Math.max(0, Math.min(SCREEN_ROWS - 1, line - 1));
+    let currentCol = Math.max(0, Math.min(SCREEN_COLS - 1, col - 1));
+
+    for (let i = 0; i < text.length && currentCol < SCREEN_COLS; i++) {
+        const ch = text[i];
+        if (ch === '\n') {
+            // Don't handle newlines in screen mode - use LINE positioning
+            continue;
+        }
+        screenBuffer[row][currentCol] = {
+            char: ch,
+            highlight: options.highlight || false,
+            blink: options.blink || false,
+            reverse: options.reverseVideo || false,
+            underline: options.underline || false,
+            fgColor: options.foregroundColor || null,
+            bgColor: options.backgroundColor || null
+        };
+        currentCol++;
+    }
+
+    // Update cursor position to end of written text
+    screenCursorLine = line;
+    screenCursorCol = currentCol + 1;
+}
+
+/**
+ * Render screen buffer to terminal output
+ */
+function renderScreenBuffer() {
+    if (!screenBuffer) return;
+
+    const output = document.getElementById('terminalOutput');
+    if (!output) return;
+
+    // Clear existing output
+    output.innerHTML = '';
+
+    // Create screen grid container
+    const grid = document.createElement('div');
+    grid.className = 'screen-grid';
+
+    for (let row = 0; row < SCREEN_ROWS; row++) {
+        const lineDiv = document.createElement('div');
+        lineDiv.className = 'screen-line';
+
+        for (let col = 0; col < SCREEN_COLS; col++) {
+            const cell = screenBuffer[row][col];
+            const span = document.createElement('span');
+            span.className = 'screen-cell';
+            span.textContent = cell.char;
+
+            // Apply attributes
+            if (cell.highlight) span.classList.add('highlight');
+            if (cell.blink) span.classList.add('blink');
+            if (cell.reverse) span.classList.add('reverse');
+            if (cell.underline) span.classList.add('underline');
+            if (cell.fgColor !== null) span.style.color = getColor(cell.fgColor);
+            if (cell.bgColor !== null) span.style.backgroundColor = getColor(cell.bgColor);
+
+            lineDiv.appendChild(span);
+        }
+        grid.appendChild(lineDiv);
+    }
+
+    output.appendChild(grid);
+}
+
+/**
+ * Convert COBOL color number to CSS color
+ */
+function getColor(colorNum) {
+    const colors = {
+        0: '#000000',  // Black
+        1: '#0000aa',  // Blue
+        2: '#00aa00',  // Green
+        3: '#00aaaa',  // Cyan
+        4: '#aa0000',  // Red
+        5: '#aa00aa',  // Magenta
+        6: '#aa5500',  // Brown/Yellow
+        7: '#aaaaaa',  // White
+    };
+    return colors[colorNum] || colors[2]; // Default to green
+}
+
 // Default COBOL program
 const DEFAULT_CODE = `       IDENTIFICATION DIVISION.
        PROGRAM-ID. HELLO.
@@ -278,6 +458,10 @@ export function compileOnly() {
                 terminalOutput(msg);
                 showOutput('output', msg); // Also show in main console
             },
+            onDisplayWithOptions: (msg, options) => {
+                terminalOutputWithOptions(msg, options);
+                showOutput('output', msg); // Also show in main console
+            },
             onAccept: (varName) => {
                 terminalOutput(`ACCEPT ${varName}:`, 'system');
                 setTerminalWaiting(true);
@@ -465,6 +649,11 @@ function openTerminal() {
 export function closeTerminal() {
     const modal = document.getElementById('terminalModal');
     if (modal) modal.classList.remove('active');
+
+    // Reset screen mode
+    screenModeEnabled = false;
+    screenBuffer = null;
+    document.getElementById('terminalScreen')?.classList.remove('screen-mode');
 }
 
 /**
@@ -478,6 +667,16 @@ function terminalOutput(msg, type = '') {
     // Only output if terminal is open
     if (!modal?.classList.contains('active') || !output) return;
 
+    // If screen mode is enabled, use screen buffer instead
+    if (screenModeEnabled && screenBuffer) {
+        // In screen mode, append at current cursor position, then move to next line
+        writeToScreen(msg, {});
+        screenCursorLine++;
+        screenCursorCol = 1;
+        renderScreenBuffer();
+        return;
+    }
+
     const line = document.createElement('div');
     line.className = 'line' + (type ? ` ${type}` : '');
     line.textContent = msg;
@@ -486,6 +685,80 @@ function terminalOutput(msg, type = '') {
     // Auto-scroll
     const screen = document.getElementById('terminalScreen');
     if (screen) screen.scrollTop = screen.scrollHeight;
+}
+
+/**
+ * Add output to terminal with screen control options
+ */
+function terminalOutputWithOptions(msg, options) {
+    const modal = document.getElementById('terminalModal');
+
+    // Only output if terminal is open
+    if (!modal?.classList.contains('active')) return;
+
+    // Enable screen mode if not already enabled
+    if (!screenModeEnabled) {
+        initScreenBuffer();
+        document.getElementById('terminalScreen')?.classList.add('screen-mode');
+    }
+
+    // Handle ERASE before writing
+    if (options.erase) {
+        if (options.line) {
+            screenCursorLine = options.line;
+            screenCursorCol = options.column || 1;
+        }
+        switch (options.erase) {
+            case 'SCREEN':
+                clearScreen();
+                break;
+            case 'EOS':
+                eraseToEndOfScreen();
+                break;
+            case 'EOL':
+                eraseToEndOfLine();
+                break;
+        }
+    }
+
+    // Handle BELL/BEEP
+    if (options.bell) {
+        // Play a beep sound (simple audio API beep)
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+            oscillator.connect(audioCtx.destination);
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.1);
+        } catch (e) {
+            // Audio not supported, ignore
+        }
+    }
+
+    // Write to screen buffer
+    if (msg && msg.length > 0) {
+        writeToScreen(msg, {
+            line: options.line || screenCursorLine,
+            column: options.column || screenCursorCol,
+            highlight: options.highlight,
+            blink: options.blink,
+            reverseVideo: options.reverseVideo,
+            underline: options.underline,
+            foregroundColor: options.foregroundColor,
+            backgroundColor: options.backgroundColor
+        });
+    }
+
+    // Move cursor to next line unless NO ADVANCING
+    if (!options.noAdvancing) {
+        screenCursorLine++;
+        screenCursorCol = 1;
+    }
+
+    // Render the updated screen
+    renderScreenBuffer();
 }
 
 /**

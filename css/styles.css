@@ -1118,3 +1118,65 @@ body::after {
     border-left: 3px solid #ffaa00;
     pointer-events: none;
 }
+
+/* ========================================
+   Screen Control Mode (IBM 3270 style)
+   ======================================== */
+
+.screen-grid {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem;
+    line-height: 1.2;
+    background: #0a0a0a;
+    padding: 0.5rem;
+}
+
+.screen-line {
+    white-space: pre;
+    height: 1.2em;
+}
+
+.screen-cell {
+    display: inline-block;
+    width: 0.6em;
+    text-align: center;
+    color: var(--phosphor-green);
+    text-shadow: 0 0 5px var(--phosphor-glow);
+}
+
+/* Screen cell attributes */
+.screen-cell.highlight {
+    color: #fff;
+    text-shadow: 0 0 8px #fff;
+    font-weight: bold;
+}
+
+.screen-cell.blink {
+    animation: screen-blink 1s infinite;
+}
+
+@keyframes screen-blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}
+
+.screen-cell.reverse {
+    background: var(--phosphor-green);
+    color: #000;
+    text-shadow: none;
+}
+
+.screen-cell.underline {
+    text-decoration: underline;
+}
+
+/* Terminal screen adjustments for screen mode */
+.terminal-screen.screen-mode {
+    min-height: auto;
+    max-height: none;
+    overflow: hidden;
+}
+
+.terminal-screen.screen-mode .terminal-output {
+    padding: 0;
+}

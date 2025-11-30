@@ -16,6 +16,7 @@ export class CobolRuntime {
         this.options = options;
         this.callbacks = {
             onDisplay: options.onDisplay || console.log,
+            onDisplayWithOptions: options.onDisplayWithOptions || null, // Screen control display
             onAccept: options.onAccept || (() => {}),
             onError: options.onError || console.error,
             onStatus: options.onStatus || (() => {}),

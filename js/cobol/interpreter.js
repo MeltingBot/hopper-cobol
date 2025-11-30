@@ -881,6 +881,16 @@ class Runtime {
         }
     }
 
+    // Output with screen control options
+    displayWithOptions(message, options) {
+        if (this.callbacks.onDisplayWithOptions) {
+            this.callbacks.onDisplayWithOptions(message, options);
+        } else if (this.callbacks.onDisplay) {
+            // Fallback to simple display if screen control not supported
+            this.callbacks.onDisplay(message);
+        }
+    }
+
     // Input
     async accept(variableName) {
         this.waitingForInput = true;
@@ -1313,7 +1323,7 @@ export class Interpreter {
     }
 
     /**
-     * Execute DISPLAY statement
+     * Execute DISPLAY statement with screen control support
      */
     async executeDisplay(stmt) {
         const parts = [];
@@ -1328,7 +1338,31 @@ export class Interpreter {
         }
 
         const message = parts.join('');
-        this.runtime.display(message);
+
+        // Check if screen control options are present
+        const hasScreenControl = stmt.line !== null || stmt.column !== null ||
+            stmt.erase !== null || stmt.highlight || stmt.blink ||
+            stmt.reverseVideo || stmt.underline || stmt.bell ||
+            stmt.foregroundColor !== null || stmt.backgroundColor !== null;
+
+        if (hasScreenControl) {
+            // Pass screen control options to runtime
+            this.runtime.displayWithOptions(message, {
+                line: stmt.line,
+                column: stmt.column,
+                erase: stmt.erase,
+                highlight: stmt.highlight,
+                blink: stmt.blink,
+                reverseVideo: stmt.reverseVideo,
+                underline: stmt.underline,
+                bell: stmt.bell,
+                foregroundColor: stmt.foregroundColor,
+                backgroundColor: stmt.backgroundColor,
+                noAdvancing: stmt.noAdvancing
+            });
+        } else {
+            this.runtime.display(message);
+        }
     }
 
     /**

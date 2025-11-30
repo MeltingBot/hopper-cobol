@@ -865,7 +865,8 @@ export class Parser {
             // LINE number
             else if (this.check(TokenType.LINE)) {
                 this.advance();
-                this.optional(TokenType.NUMBER); // LINE NUMBER IS ...
+                // Skip optional keywords like "NUMBER" and "IS"
+                // (but NUMBER as keyword doesn't exist, so just skip IS)
                 this.optional(TokenType.IS);
                 if (this.checkAny(TokenType.NUMBER, TokenType.LEVEL_NUMBER)) {
                     node.line = parseInt(this.advance().value);
@@ -876,7 +877,7 @@ export class Parser {
             // COLUMN/COL/POSITION number
             else if (this.checkAny(TokenType.COLUMN, TokenType.COL, TokenType.POSITION)) {
                 this.advance();
-                this.optional(TokenType.NUMBER); // COLUMN NUMBER IS ...
+                // Skip optional keywords like "NUMBER" and "IS"
                 this.optional(TokenType.IS);
                 if (this.checkAny(TokenType.NUMBER, TokenType.LEVEL_NUMBER)) {
                     node.column = parseInt(this.advance().value);
@@ -1020,7 +1021,6 @@ export class Parser {
             // LINE number
             else if (this.check(TokenType.LINE)) {
                 this.advance();
-                this.optional(TokenType.NUMBER);
                 this.optional(TokenType.IS);
                 if (this.checkAny(TokenType.NUMBER, TokenType.LEVEL_NUMBER)) {
                     node.line = parseInt(this.advance().value);
@@ -1031,7 +1031,6 @@ export class Parser {
             // COLUMN/COL/POSITION number
             else if (this.checkAny(TokenType.COLUMN, TokenType.COL, TokenType.POSITION)) {
                 this.advance();
-                this.optional(TokenType.NUMBER);
                 this.optional(TokenType.IS);
                 if (this.checkAny(TokenType.NUMBER, TokenType.LEVEL_NUMBER)) {
                     node.column = parseInt(this.advance().value);
