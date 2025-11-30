@@ -30,6 +30,7 @@ window.importCobFile = editor.importCobFile;
 window.handleCobFileImport = editor.handleCobFileImport;
 window.prevCard = editor.prevCard;
 window.nextCard = editor.nextCard;
+window.changeDialect = editor.changeDialect;
 
 // Step mode functions (card reading)
 window.startStepMode = editor.startStepMode;

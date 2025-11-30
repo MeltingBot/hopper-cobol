@@ -245,6 +245,31 @@ body::after {
 .panel-title { font-size: 0.75rem; font-weight: 600; color: var(--phosphor-green); text-transform: uppercase; letter-spacing: 1px; }
 .panel-badge { background: var(--accent-blue); color: white; font-size: 0.55rem; padding: 0.1rem 0.35rem; border-radius: 2px; }
 
+/* Dialect Selector */
+.dialect-selector {
+    background: #1a1a1a;
+    color: var(--phosphor-green);
+    border: 1px solid var(--panel-border);
+    border-radius: 3px;
+    padding: 0.15rem 0.5rem;
+    font-size: 0.6rem;
+    font-family: 'IBM Plex Mono', monospace;
+    cursor: pointer;
+    outline: none;
+    margin-left: auto;
+}
+.dialect-selector:hover {
+    border-color: var(--accent-cyan);
+}
+.dialect-selector:focus {
+    border-color: var(--phosphor-green);
+    box-shadow: 0 0 5px rgba(57, 255, 20, 0.3);
+}
+.dialect-selector option {
+    background: #1a1a1a;
+    color: var(--phosphor-green);
+}
+
 /* Code Editor */
 .editor-container { position: relative; flex: 1; min-height: 200px; }
 .line-numbers { position: absolute; left: 0; top: 0; bottom: 0; width: 40px; background: #111; border-right: 1px solid var(--panel-border); padding: 0.6rem 0.3rem; text-align: right; font-size: 0.65rem; color: var(--phosphor-dim); overflow: hidden; user-select: none; line-height: 1.5; }
@@ -330,6 +355,7 @@ body::after {
 .output-line.output { color: var(--phosphor-green); font-weight: 500; }
 .output-line.system { color: #888; font-style: italic; }
 .output-line.highlight { color: #ffaa00; background: rgba(255, 170, 0, 0.1); border-left-color: #ffaa00; }
+.output-line.warning { color: #ffcc00; border-left-color: #ffcc00; background: rgba(255, 204, 0, 0.1); }
 
 /* Console Input Area */
 .console-input-area { display: flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.6rem; background: #0a0a0a; border-top: 1px solid var(--panel-border); }

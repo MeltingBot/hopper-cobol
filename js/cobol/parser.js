@@ -4,6 +4,7 @@
  */
 
 import { TokenType } from './lexer.js';
+import { DialectManager, CobolDialect } from './dialects.js';
 
 /**
  * AST Node Types
@@ -78,10 +79,32 @@ export class ASTNode {
  * Parser class
  */
 export class Parser {
-    constructor(tokens) {
+    constructor(tokens, dialectManager = null) {
         this.tokens = tokens.filter(t => t.type !== TokenType.COMMENT);
         this.pos = 0;
         this.errors = [];
+        this.dialectManager = dialectManager || new DialectManager(CobolDialect.COBOL_85);
+    }
+
+    /**
+     * Set dialect manager
+     */
+    setDialectManager(dialectManager) {
+        this.dialectManager = dialectManager;
+    }
+
+    /**
+     * Check if a feature is available in current dialect
+     */
+    checkFeature(featureName, context = '') {
+        return this.dialectManager.checkFeature(featureName, context);
+    }
+
+    /**
+     * Get dialect warnings
+     */
+    getDialectWarnings() {
+        return this.dialectManager.getWarnings();
     }
 
     /**
@@ -1035,6 +1058,8 @@ export class Parser {
      * Parse EVALUATE statement
      */
     parseEvaluate() {
+        // Check dialect support
+        this.checkFeature('evaluate', 'EVALUATE');
         this.expect(TokenType.EVALUATE);
 
         const node = new ASTNode(NodeType.EVALUATE, {
@@ -1267,6 +1292,8 @@ export class Parser {
      * Parse INITIALIZE statement
      */
     parseInitialize() {
+        // Check dialect support
+        this.checkFeature('initialize', 'INITIALIZE');
         this.expect(TokenType.INITIALIZE);
 
         const node = new ASTNode(NodeType.INITIALIZE, {

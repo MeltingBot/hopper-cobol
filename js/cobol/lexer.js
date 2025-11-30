@@ -3,6 +3,8 @@
  * Tokenizes COBOL source code into a stream of tokens
  */
 
+import { DialectManager, CobolDialect } from './dialects.js';
+
 // Token types
 export const TokenType = {
     // Keywords - Divisions
@@ -359,13 +361,58 @@ export class Token {
 /**
  * Lexer class
  */
+/**
+ * Keywords that require specific dialect features
+ */
+const DIALECT_KEYWORDS = {
+    // COBOL-85+ keywords
+    'END-IF': 'endIf',
+    'END-PERFORM': 'endPerform',
+    'END-EVALUATE': 'endEvaluate',
+    'END-READ': 'endRead',
+    'END-WRITE': 'endWrite',
+    'END-SEARCH': 'endSearch',
+    'EVALUATE': 'evaluate',
+    'INITIALIZE': 'initialize',
+    'CONTINUE': 'continueStatement',
+};
+
 export class Lexer {
-    constructor(source) {
+    constructor(source, dialectManager = null) {
         this.source = source;
         this.pos = 0;
         this.line = 1;
         this.column = 1;
         this.tokens = [];
+        this.dialectManager = dialectManager || new DialectManager(CobolDialect.COBOL_85);
+    }
+
+    /**
+     * Set dialect manager
+     */
+    setDialectManager(dialectManager) {
+        this.dialectManager = dialectManager;
+    }
+
+    /**
+     * Check if a keyword is valid for the current dialect
+     */
+    isKeywordValid(keyword) {
+        const requiredFeature = DIALECT_KEYWORDS[keyword];
+        if (!requiredFeature) {
+            return true; // Not dialect-specific
+        }
+        return this.dialectManager.hasFeature(requiredFeature);
+    }
+
+    /**
+     * Check keyword and record warning if not available
+     */
+    checkKeyword(keyword) {
+        const requiredFeature = DIALECT_KEYWORDS[keyword];
+        if (requiredFeature) {
+            this.dialectManager.checkFeature(requiredFeature, `mot-clé ${keyword}`);
+        }
     }
 
     /**
@@ -498,10 +545,26 @@ export class Lexer {
 
         // Check for keywords
         if (KEYWORDS[upperValue]) {
+            // Check if this keyword is valid for the current dialect
+            this.checkKeyword(upperValue);
             return new Token(KEYWORDS[upperValue], upperValue, startLine, startColumn);
         }
 
         return new Token(TokenType.IDENTIFIER, upperValue, startLine, startColumn);
+    }
+
+    /**
+     * Get dialect warnings
+     */
+    getDialectWarnings() {
+        return this.dialectManager.getWarnings();
+    }
+
+    /**
+     * Get effective dialect info
+     */
+    getDialectInfo() {
+        return this.dialectManager.getDialectInfo();
     }
 
     /**

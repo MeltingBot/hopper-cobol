@@ -38,7 +38,14 @@
                 <div class="panel flex-panel">
                     <div class="panel-header">
                         <span class="panel-title">Éditeur COBOL</span>
-                        <span class="panel-badge">COBOL-85</span>
+                        <select class="dialect-selector" id="dialectSelector" onchange="changeDialect(this.value)" title="Sélectionner le dialecte COBOL">
+                            <option value="AUTO">🔍 Auto</option>
+                            <option value="COBOL-68">COBOL-68</option>
+                            <option value="COBOL-74">COBOL-74</option>
+                            <option value="COBOL-85" selected>COBOL-85</option>
+                            <option value="COBOL-2002">COBOL-2002</option>
+                            <option value="COBOL-2014">COBOL-2014</option>
+                        </select>
                     </div>
                     <div class="editor-container">
                         <div class="line-numbers" id="lineNumbers">1</div>

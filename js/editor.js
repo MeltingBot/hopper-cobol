@@ -5,13 +5,14 @@
 
 import { renderPunchCard, renderPunchCardAnimated, stopPunchAnimation } from './punchCard.js';
 import { setStatus, showOutput, updateCardCount, openModal, closeModal, downloadFile, logIO } from './utils.js';
-import { CobolRuntime } from './cobol/index.js';
+import { CobolRuntime, CobolDialect } from './cobol/index.js';
 
 // State
 let cards = [];
 let currentCardIndex = 0;
 let cobolRuntime = null;
 let sourceCode = '';        // Full source code (including comments) for compilation
+let currentDialect = CobolDialect.COBOL_85;  // Current dialect setting
 
 // Workflow state
 let isPunched = false;      // Cards have been punched
@@ -270,8 +271,9 @@ export function compileOnly() {
         // Use full source code (with comments) for compilation
         const code = sourceCode;
 
-        // Create runtime with terminal callbacks (will be used during execution)
+        // Create runtime with terminal callbacks and dialect (will be used during execution)
         cobolRuntime = new CobolRuntime({
+            dialect: currentDialect,
             onDisplay: (msg) => {
                 terminalOutput(msg);
                 showOutput('output', msg); // Also show in main console
@@ -285,6 +287,10 @@ export function compileOnly() {
                 showOutput('error', err);
             },
             onStatus: (status) => terminalOutput(status, 'system'),
+            onDialectWarning: (warning) => {
+                terminalOutput(`⚠ ${warning}`, 'warning');
+                showOutput('warning', `⚠ ${warning}`);
+            },
             dataManager: window.dataManagerModule?.getFilesSync() || {}
         });
 
@@ -828,8 +834,9 @@ export function compileCode() {
     // Get data manager files for file operations (use sync cache)
     const dataManager = window.dataManagerModule?.getFilesSync?.() || {};
 
-    // Create runtime with callbacks
+    // Create runtime with callbacks and dialect
     cobolRuntime = new CobolRuntime({
+        dialect: currentDialect,
         onDisplay: (msg) => {
             showOutput('success', msg);
             logIO('output', msg);
@@ -843,6 +850,9 @@ export function compileCode() {
         },
         onStatus: (status) => {
             showOutput('info', '> ' + status);
+        },
+        onDialectWarning: (warning) => {
+            showOutput('warning', `⚠ ${warning}`);
         },
         dataManager: dataManager,
     });
@@ -1300,8 +1310,9 @@ export async function startDebugMode() {
     // Use full source code (with comments) for compilation
     const code = sourceCode;
 
-    // Create runtime with debug callbacks (console only, no terminal modal)
+    // Create runtime with debug callbacks and dialect (console only, no terminal modal)
     cobolRuntime = new CobolRuntime({
+        dialect: currentDialect,
         onDisplay: (msg) => {
             showOutput('output', msg);
         },
@@ -1320,6 +1331,9 @@ export async function startDebugMode() {
             showOutput('error', err);
         },
         onStatus: (status) => showOutput('system', status),
+        onDialectWarning: (warning) => {
+            showOutput('warning', `⚠ ${warning}`);
+        },
         onStep: handleDebugStep,
         dataManager: window.dataManagerModule?.getFilesSync() || {}
     });
@@ -1569,4 +1583,33 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+/**
+ * Change the COBOL dialect
+ * @param {string} dialect - Dialect value (e.g., 'COBOL-85', 'AUTO')
+ */
+export function changeDialect(dialect) {
+    currentDialect = dialect;
+
+    // Reset compilation state since dialect changed
+    isCompiled = false;
+    updateWorkflowButtons();
+
+    // Show status message
+    if (dialect === 'AUTO') {
+        setStatus('ok', 'Dialecte: Auto-détection');
+        showOutput('info', '> Dialecte: Auto-détection activée');
+    } else {
+        setStatus('ok', `Dialecte: ${dialect}`);
+        showOutput('info', `> Dialecte: ${dialect}`);
+    }
+}
+
+/**
+ * Get the current dialect
+ * @returns {string}
+ */
+export function getCurrentDialect() {
+    return currentDialect;
 }
