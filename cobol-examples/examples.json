@@ -1,5 +1,12 @@
 [
   {
+    "id": "mandelbrot",
+    "title": "Fractale Mandelbrot",
+    "category": "ECRAN",
+    "description": "Affichage de la fractale de Mandelbrot en ASCII avec positionnement écran.",
+    "file": "mandelbrot.cob"
+  },
+  {
     "id": "demo-ecran",
     "title": "Demo Screen Control",
     "category": "ECRAN",

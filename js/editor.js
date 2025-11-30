@@ -4,7 +4,7 @@
  */
 
 import { renderPunchCard, renderPunchCardAnimated, stopPunchAnimation } from './punchCard.js';
-import { setStatus, showOutput, updateCardCount, openModal, closeModal, downloadFile, logIO } from './utils.js';
+import { setStatus, showOutput, showOutputCursor, hideOutputCursor, updateCardCount, openModal, closeModal, downloadFile, logIO } from './utils.js';
 import { CobolRuntime, CobolDialect } from './cobol/index.js';
 
 // State
@@ -472,7 +472,24 @@ export function compileOnly() {
                 showOutput('output', msg); // Also show in main console
             },
             onAccept: (varName) => {
-                terminalOutput(`ACCEPT ${varName}:`, 'system');
+                // In screen mode, don't display "ACCEPT varName:" text on screen
+                // Just position cursor for input
+                if (screenModeEnabled && screenBuffer) {
+                    // Show blinking cursor at current position
+                    writeToScreen('_', {
+                        line: screenCursorLine,
+                        column: screenCursorCol,
+                        blink: true
+                    });
+                    renderScreenBuffer();
+                    window.currentAcceptOptions = {
+                        line: screenCursorLine,
+                        column: screenCursorCol
+                    };
+                } else {
+                    // Show blinking cursor for input
+                    terminalShowInputCursor();
+                }
                 setTerminalWaiting(true);
             },
             onAcceptWithOptions: (varName, options) => {
@@ -620,6 +637,7 @@ export async function runProgram() {
     }
 
     setTerminalWaiting(false);
+    terminalHideInputCursor();
     highlightConsoleInput(false);
 
     // Refresh data manager to show any new files/records
@@ -698,6 +716,40 @@ function terminalOutput(msg, type = '') {
     // Auto-scroll
     const screen = document.getElementById('terminalScreen');
     if (screen) screen.scrollTop = screen.scrollHeight;
+}
+
+/**
+ * Show blinking cursor for ACCEPT input
+ */
+function terminalShowInputCursor() {
+    const modal = document.getElementById('terminalModal');
+    const output = document.getElementById('terminalOutput');
+
+    if (!modal?.classList.contains('active') || !output) return;
+
+    const cursor = document.createElement('span');
+    cursor.className = 'terminal-cursor blink';
+    cursor.id = 'terminalInputCursor';
+    cursor.textContent = '▌';
+
+    const line = document.createElement('div');
+    line.className = 'line';
+    line.appendChild(cursor);
+    output.appendChild(line);
+
+    // Auto-scroll
+    const screen = document.getElementById('terminalScreen');
+    if (screen) screen.scrollTop = screen.scrollHeight;
+}
+
+/**
+ * Remove blinking cursor after input received
+ */
+function terminalHideInputCursor() {
+    const cursor = document.getElementById('terminalInputCursor');
+    if (cursor) {
+        cursor.remove();
+    }
 }
 
 /**
@@ -885,6 +937,7 @@ export function submitTerminalInput() {
     if (cobolRuntime && cobolRuntime.isWaitingForInput()) {
         cobolRuntime.provideInput(value);
         setTerminalWaiting(false);
+        terminalHideInputCursor();
 
         const statusEl = document.getElementById('terminalStatus');
         if (statusEl) {
@@ -931,6 +984,7 @@ function highlightConsoleInput(highlight) {
         } else {
             consoleInput.classList.remove('waiting');
             consoleInput.placeholder = 'Entrée...';
+            hideOutputCursor();
         }
     }
 
@@ -1664,7 +1718,7 @@ export async function startDebugMode() {
             showOutput('output', msg);
         },
         onAccept: (varName) => {
-            showOutput('system', `ACCEPT ${varName}:`);
+            showOutputCursor();
             showDebugWaitingInput(varName);
             // Highlight console input
             const consoleInput = document.getElementById('consoleInput');

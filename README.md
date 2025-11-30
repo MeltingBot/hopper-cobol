@@ -10,6 +10,7 @@ A web-based COBOL emulator with IBM 029 punch card visualization, running entire
 
 - **Multi-Dialect COBOL Interpreter** - Supports COBOL-68, 74, 85, 2002, and 2014
 - **Auto-Detection** - Automatically detects the appropriate dialect from source code
+- **IBM 3270 Screen Control** - Full-screen terminal emulation with positioning and attributes
 - **Punch Card Visualization** - Realistic IBM 029 keypunch simulation with animations
 - **Debug Mode** - Step-by-step execution with variable inspection
 - **File I/O** - Simulated SEQUENTIAL and INDEXED file operations via IndexedDB
@@ -48,6 +49,44 @@ Use the dialect selector in the editor to choose a specific version or let auto-
 - GO TO, EXIT, STOP RUN
 - SORT/MERGE with INPUT/OUTPUT PROCEDURE
 - File operations: OPEN, READ, WRITE, REWRITE, DELETE, CLOSE
+
+### Screen Control (IBM 3270 Extensions)
+
+HOPPER supports IBM 3270 style screen control for building interactive terminal applications:
+
+```cobol
+      * Positioning
+       DISPLAY 'Hello' LINE 5 POSITION 10.
+       ACCEPT WS-NAME LINE 5 COLUMN 20.
+
+      * Screen clearing
+       DISPLAY ' ' LINE 1 POSITION 1 ERASE EOS.    *> Erase to End Of Screen
+       DISPLAY ' ' LINE 1 POSITION 1 ERASE EOL.    *> Erase to End Of Line
+       DISPLAY ' ' LINE 1 POSITION 1 ERASE SCREEN. *> Clear entire screen
+
+      * Display attributes
+       DISPLAY 'Important!' LINE 3 POSITION 1 HIGHLIGHT.
+       DISPLAY 'Warning' LINE 4 POSITION 1 BLINK.
+       DISPLAY 'Selected' LINE 5 POSITION 1 REVERSE-VIDEO.
+       DISPLAY 'Link' LINE 6 POSITION 1 UNDERLINE.
+
+      * Combined attributes
+       DISPLAY 'Critical' LINE 7 POSITION 1 HIGHLIGHT BLINK.
+```
+
+**Supported DISPLAY options:**
+- `LINE n` / `POSITION n` / `COLUMN n` / `COL n` - Cursor positioning (1-based)
+- `ERASE EOS` / `ERASE EOL` / `ERASE SCREEN` - Screen clearing
+- `HIGHLIGHT` - Bright/bold text
+- `BLINK` - Blinking text
+- `REVERSE-VIDEO` - Inverted colors
+- `UNDERLINE` - Underlined text
+- `BELL` / `BEEP` - Terminal beep
+
+**Supported ACCEPT options:**
+- `LINE n` / `POSITION n` / `COLUMN n` - Input field positioning
+- `SECURE` - Password input (hidden characters)
+- Display attributes (HIGHLIGHT, REVERSE-VIDEO, etc.)
 
 ## Getting Started
 
@@ -100,7 +139,25 @@ hopper-cobol/
 │       ├── interpreter.js  # Execution engine
 │       └── dialects.js     # Dialect configuration & detection
 └── cobol-examples/         # Sample programs
+    ├── demo-ecran.cob      # Screen control demo (IBM 3270)
+    ├── gestion-clients.cob # Customer management (ERP)
+    ├── facturation.cob     # Invoicing (ERP)
+    ├── gestion-stock.cob   # Inventory management (ERP)
+    ├── banque-comptes.cob  # Bank accounts (BANQUE)
+    ├── paie-employes.cob   # Payroll (RH)
+    └── ...
 ```
+
+### Example Categories
+
+| Category | Description |
+|----------|-------------|
+| ECRAN | Screen control demonstrations (IBM 3270) |
+| ERP | Enterprise resource planning (clients, invoicing, inventory) |
+| RH | Human resources (payroll) |
+| BANQUE | Banking applications |
+| TOURISME | Hotel reservations |
+| BATCH | Batch processing (CSV import/export) |
 
 ## In Memory Of
 

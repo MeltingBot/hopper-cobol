@@ -761,7 +761,7 @@ body::after {
 
 /* Terminal Modal */
 .terminal-modal {
-    max-width: 700px;
+    max-width: 1100px;
     width: 95%;
     padding: 0;
     background: #000;
@@ -817,9 +817,8 @@ body::after {
 }
 
 .terminal-screen {
-    background: #0a0a0a;
-    min-height: 300px;
-    max-height: 400px;
+    background: #0d120d;
+    height: 750px;
     overflow-y: auto;
     position: relative;
 }
@@ -839,10 +838,26 @@ body::after {
     z-index: 1;
 }
 
+/* CRT vignette effect - darker corners */
+.terminal-screen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+        ellipse at center,
+        transparent 0%,
+        transparent 50%,
+        rgba(0, 0, 0, 0.3) 80%,
+        rgba(0, 0, 0, 0.6) 100%
+    );
+    pointer-events: none;
+    z-index: 2;
+}
+
 .terminal-output {
-    padding: 1rem;
+    padding: 1.5rem;
     font-family: 'Share Tech Mono', monospace;
-    font-size: 0.75rem;
+    font-size: 1.4rem !important;
     line-height: 1.5;
     color: var(--phosphor-green);
     text-shadow: 0 0 5px var(--phosphor-glow);
@@ -851,11 +866,15 @@ body::after {
 }
 
 .terminal-output .line {
+    font-size: 1.4rem !important;
+}
+
+.terminal-output .line {
     margin-bottom: 0.2rem;
 }
 
 .terminal-output .line.input {
-    color: #fff;
+    color: #7fff7f;
 }
 
 .terminal-output .line.input::before {
@@ -864,11 +883,12 @@ body::after {
 }
 
 .terminal-output .line.error {
-    color: #ff6b6b;
+    color: #33ff33;
+    text-decoration: underline;
 }
 
 .terminal-output .line.system {
-    color: #8cf;
+    color: #1a9f1a;
 }
 
 .terminal-output .line.separator {
@@ -1125,15 +1145,16 @@ body::after {
 
 .screen-grid {
     font-family: 'Share Tech Mono', monospace;
-    font-size: 0.7rem;
-    line-height: 1.2;
+    font-size: 1.4rem;
+    line-height: 1.4;
     background: #0a0a0a;
-    padding: 0.5rem;
+    padding: 1rem;
 }
 
 .screen-line {
     white-space: pre;
-    height: 1.2em;
+    height: 1.5em;
+    display: block;
 }
 
 .screen-cell {
@@ -1146,8 +1167,8 @@ body::after {
 
 /* Screen cell attributes */
 .screen-cell.highlight {
-    color: #fff;
-    text-shadow: 0 0 8px #fff;
+    color: #7fff7f;
+    text-shadow: 0 0 8px #33ff33;
     font-weight: bold;
 }
 
@@ -1158,6 +1179,11 @@ body::after {
 @keyframes screen-blink {
     0%, 50% { opacity: 1; }
     51%, 100% { opacity: 0; }
+}
+
+.terminal-cursor.blink {
+    color: var(--phosphor-green);
+    animation: screen-blink 0.8s infinite;
 }
 
 .screen-cell.reverse {

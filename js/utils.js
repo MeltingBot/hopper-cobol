@@ -85,6 +85,36 @@ export function showOutput(type, message) {
 }
 
 /**
+ * Show blinking cursor for ACCEPT input in console output
+ */
+export function showOutputCursor() {
+    const output = document.getElementById('compilerOutput');
+    if (!output) return;
+
+    const line = document.createElement('div');
+    line.className = 'output-line';
+
+    const cursor = document.createElement('span');
+    cursor.className = 'terminal-cursor blink';
+    cursor.id = 'outputCursor';
+    cursor.textContent = '▌';
+
+    line.appendChild(cursor);
+    output.appendChild(line);
+    output.scrollTop = output.scrollHeight;
+}
+
+/**
+ * Hide the blinking cursor after input received
+ */
+export function hideOutputCursor() {
+    const cursor = document.getElementById('outputCursor');
+    if (cursor) {
+        cursor.parentElement?.remove();
+    }
+}
+
+/**
  * Log a message to the I/O console
  * @param {string} type - Line type: 'input', 'output', 'info', or 'file-op'
  * @param {string} message - Message to display

@@ -114,6 +114,7 @@ class Variable {
         this.pic = definition.pic;
         this.picInfo = parsePic(definition.pic);
         this.initialValue = definition.value;
+        this.sign = 1; // 1 for positive, -1 for negative
         this.value = this.getInitialValue();
         this.children = [];
         this.parent = null;
@@ -126,6 +127,10 @@ class Variable {
                 return formatValue(this.initialValue.value, this.pic);
             }
             if (this.initialValue.type === 'number') {
+                // Store sign for signed numeric variables
+                if (this.picInfo.signed && this.initialValue.value < 0) {
+                    this.sign = -1;
+                }
                 return formatValue(this.initialValue.value, this.pic);
             }
             if (this.initialValue.type === 'figurative') {
@@ -167,23 +172,37 @@ class Variable {
 
     getNumericValue() {
         const val = this.getValue().trim();
+        let result;
         if (this.picInfo.decimals > 0) {
             const intPart = val.substring(0, val.length - this.picInfo.decimals);
             const decPart = val.substring(val.length - this.picInfo.decimals);
-            return parseFloat(intPart + '.' + decPart) || 0;
+            result = parseFloat(intPart + '.' + decPart) || 0;
+        } else {
+            result = parseInt(val) || 0;
         }
-        return parseInt(val) || 0;
+        // Apply sign for signed numeric variables
+        return this.picInfo.signed ? result * this.sign : result;
     }
 
     /**
      * Get value formatted for display (with decimal point if needed)
      */
     getDisplayValue() {
-        if (this.picInfo.type === 'numeric' && this.picInfo.decimals > 0) {
+        if (this.picInfo.type === 'numeric') {
             const val = this.getValue().trim();
-            const intPart = val.substring(0, val.length - this.picInfo.decimals) || '0';
-            const decPart = val.substring(val.length - this.picInfo.decimals);
-            return intPart + '.' + decPart;
+            let displayVal;
+            if (this.picInfo.decimals > 0) {
+                const intPart = val.substring(0, val.length - this.picInfo.decimals) || '0';
+                const decPart = val.substring(val.length - this.picInfo.decimals);
+                displayVal = intPart + '.' + decPart;
+            } else {
+                displayVal = val;
+            }
+            // Add sign prefix for negative signed values
+            if (this.picInfo.signed && this.sign < 0) {
+                return '-' + displayVal;
+            }
+            return displayVal;
         }
         return this.getValue();
     }
@@ -199,6 +218,10 @@ class Variable {
                 offset += len;
             }
         } else {
+            // Handle sign for signed numeric variables
+            if (this.picInfo.signed && typeof value === 'number') {
+                this.sign = value < 0 ? -1 : 1;
+            }
             this.value = formatValue(value, this.pic);
         }
     }
@@ -1548,7 +1571,26 @@ export class Interpreter {
         for (const whenClause of stmt.whenClauses) {
             for (const value of whenClause.values) {
                 const whenValue = this.evaluateExpression(value);
-                if (subject === whenValue || String(subject).trim() === String(whenValue).trim()) {
+                // Try direct equality first
+                if (subject === whenValue) {
+                    for (const s of whenClause.statements) {
+                        await this.executeStatement(s);
+                        if (this.halted) return;
+                    }
+                    return;
+                }
+                // Try string comparison
+                if (String(subject).trim() === String(whenValue).trim()) {
+                    for (const s of whenClause.statements) {
+                        await this.executeStatement(s);
+                        if (this.halted) return;
+                    }
+                    return;
+                }
+                // Try numeric comparison (important for COBOL numeric variables stored as strings)
+                const numSubject = parseFloat(subject);
+                const numWhenValue = parseFloat(whenValue);
+                if (!isNaN(numSubject) && !isNaN(numWhenValue) && numSubject === numWhenValue) {
                     for (const s of whenClause.statements) {
                         await this.executeStatement(s);
                         if (this.halted) return;
