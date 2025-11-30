@@ -514,25 +514,30 @@ class CobolFileIDB {
 
         const fileName = this.getFileName();
 
-        // Create file if it doesn't exist (for I-O and OUTPUT modes)
-        if (mode === 'I-O' || mode === 'OUTPUT') {
-            const exists = await this.storage.fileExists(fileName);
-            if (!exists) {
-                await this.storage.createFile({
-                    name: fileName,
-                    organization: this.organization,
-                    recordKey: this.recordKey
-                });
-                // Refresh data manager UI
-                if (typeof window !== 'undefined' && window.dataManagerModule?.renderFileList) {
-                    window.dataManagerModule.renderFileList();
+        try {
+            // Create file if it doesn't exist (for I-O and OUTPUT modes)
+            if (mode === 'I-O' || mode === 'OUTPUT') {
+                const exists = await this.storage.fileExists(fileName);
+                if (!exists) {
+                    await this.storage.createFile({
+                        name: fileName,
+                        organization: this.organization,
+                        recordKey: this.recordKey
+                    });
+                    // Refresh data manager UI
+                    if (typeof window !== 'undefined' && window.dataManagerModule?.renderFileList) {
+                        window.dataManagerModule.renderFileList();
+                    }
                 }
             }
-        }
 
-        // For OUTPUT mode, clear existing records
-        if (mode === 'OUTPUT') {
-            await this.storage.clearFile(fileName);
+            // For OUTPUT mode, clear existing records
+            if (mode === 'OUTPUT') {
+                await this.storage.clearFile(fileName);
+            }
+        } catch (error) {
+            console.error(`COBOL OPEN error for ${fileName}:`, error);
+            // Continue execution even if storage fails
         }
 
         return true;
