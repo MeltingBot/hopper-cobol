@@ -11,6 +11,7 @@ import { CobolRuntime } from './cobol/index.js';
 let cards = [];
 let currentCardIndex = 0;
 let cobolRuntime = null;
+let sourceCode = '';        // Full source code (including comments) for compilation
 
 // Workflow state
 let isPunched = false;      // Cards have been punched
@@ -116,7 +117,10 @@ export function generateCards() {
     punchingInProgress = true;
     updateWorkflowButtons();
 
-    // Filter out comment lines (* in column 7 or *> inline comments)
+    // Save full source code for compilation (with comments)
+    sourceCode = code;
+
+    // Filter out comment lines (* in column 7 or *> inline comments) for punch cards only
     const lines = code.split('\n');
     const filteredLines = lines.filter(line => {
         // Skip empty lines
@@ -263,7 +267,8 @@ export function compileOnly() {
         showOutput('info', '⚙ COMPILATION EN COURS...');
         setStatus('busy', 'COMPILATION');
 
-        const code = cards.map(c => c.original).join('\n');
+        // Use full source code (with comments) for compilation
+        const code = sourceCode;
 
         // Create runtime with terminal callbacks (will be used during execution)
         cobolRuntime = new CobolRuntime({
@@ -1292,7 +1297,8 @@ export async function startDebugMode() {
     // Always create new runtime with debug callbacks (need onStep callback)
     showOutput('info', '⚙ Compilation pour debug...');
 
-    const code = cards.map(c => c.original).join('\n');
+    // Use full source code (with comments) for compilation
+    const code = sourceCode;
 
     // Create runtime with debug callbacks (console only, no terminal modal)
     cobolRuntime = new CobolRuntime({
