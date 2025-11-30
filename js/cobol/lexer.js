@@ -631,6 +631,10 @@ export class Lexer {
                 if (this.current() === '.' && (!this.peek() || /\s/.test(this.peek()))) {
                     break; // It's a statement terminator
                 }
+                // Check if comma is followed by space (argument separator, not decimal)
+                if (this.current() === ',' && (!this.peek() || /\s/.test(this.peek()))) {
+                    break; // It's an argument separator like TABLE(1, 2)
+                }
                 hasDecimal = true;
                 value += this.current() === ',' ? '.' : this.current();
                 this.advance();

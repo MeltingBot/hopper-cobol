@@ -1233,8 +1233,12 @@ export class Parser {
 
         this.expect(TokenType.TO);
 
+        // Parse targets which may include subscripts like WS-TABLE(1, 2)
         while (this.check(TokenType.IDENTIFIER)) {
-            node.targets.push(this.advance().value);
+            const target = this.parseExpression();
+            if (target) {
+                node.targets.push(target);
+            }
         }
 
         this.skipPeriod();

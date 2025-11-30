@@ -107,26 +107,117 @@ function parsePic(picString) {
  * Format a value according to PIC clause
  */
 function formatValue(value, pic) {
-    const { type, length, decimals, signed } = parsePic(pic);
+    const { type, length, decimals, signed, edited, editMask } = parsePic(pic);
 
     if (type === 'numeric') {
-        // Check if value is a number (result of computation) vs string (user input)
+        // Convert to numeric value first
+        let numValue;
         if (typeof value === 'number') {
-            // For computed values, scale by decimals and format
-            if (decimals > 0) {
-                const scaled = Math.round(value * Math.pow(10, decimals));
-                return String(Math.abs(scaled)).padStart(length, '0').slice(-length);
-            }
-            return String(Math.abs(Math.floor(value))).padStart(length, '0').slice(-length);
+            numValue = value;
+        } else {
+            const str = String(value).replace(/[^0-9.-]/g, '');
+            numValue = parseFloat(str) || 0;
         }
-        // For string input (user entry), treat as raw digits (COBOL style)
-        const str = String(value).replace(/[^0-9]/g, '');
-        return str.padStart(length, '0').slice(-length);
+
+        // For edited pictures, apply the edit mask
+        if (edited) {
+            return applyEditMask(numValue, editMask, decimals);
+        }
+
+        // For non-edited numeric, format as digits
+        if (decimals > 0) {
+            const scaled = Math.round(Math.abs(numValue) * Math.pow(10, decimals));
+            return String(scaled).padStart(length, '0').slice(-length);
+        }
+        return String(Math.abs(Math.floor(numValue))).padStart(length, '0').slice(-length);
     }
 
     // Alphanumeric - left align and pad with spaces
     const str = String(value || '');
     return str.padEnd(length, ' ').substring(0, length);
+}
+
+/**
+ * Apply edit mask to a numeric value
+ * Z = zero suppress, * = asterisk fill, comma/period = insertion
+ */
+function applyEditMask(value, mask, decimals) {
+    // Scale value for decimals
+    const scaled = decimals > 0 ? Math.round(value * Math.pow(10, decimals)) : Math.floor(value);
+    const isNegative = value < 0;
+    const absValue = Math.abs(scaled);
+
+    // Count digit positions (9, Z, *)
+    let digitCount = 0;
+    for (const ch of mask) {
+        if ('9Z*'.includes(ch)) digitCount++;
+    }
+
+    // Convert value to string with leading zeros
+    const digits = String(absValue).padStart(digitCount, '0').slice(-digitCount);
+
+    // Apply mask
+    let result = '';
+    let digitIndex = 0;
+    let inSignificant = false;
+
+    for (let i = 0; i < mask.length; i++) {
+        const maskChar = mask[i];
+
+        if (maskChar === '9') {
+            result += digits[digitIndex++];
+            inSignificant = true;
+        } else if (maskChar === 'Z') {
+            const digit = digits[digitIndex++];
+            if (digit === '0' && !inSignificant) {
+                result += ' ';
+            } else {
+                result += digit;
+                inSignificant = true;
+            }
+        } else if (maskChar === '*') {
+            const digit = digits[digitIndex++];
+            if (digit === '0' && !inSignificant) {
+                result += '*';
+            } else {
+                result += digit;
+                inSignificant = true;
+            }
+        } else if (maskChar === ',') {
+            // Comma: show only if we've had significant digits
+            if (inSignificant) {
+                result += ',';
+            } else {
+                result += ' '; // Zero suppress comma too
+            }
+        } else if (maskChar === '.') {
+            // Decimal point: always show
+            result += '.';
+            inSignificant = true; // Digits after decimal always shown
+        } else if (maskChar === 'V') {
+            // Virtual decimal - skip, no output
+            inSignificant = true;
+        } else if (maskChar === '-' || maskChar === '+') {
+            // Sign
+            if (i === 0 || i === mask.length - 1) {
+                // Leading or trailing sign
+                result += isNegative ? '-' : (maskChar === '+' ? '+' : ' ');
+            } else {
+                // Floating sign acts like Z
+                const digit = digits[digitIndex++];
+                if (digit === '0' && !inSignificant) {
+                    result += ' ';
+                } else {
+                    result += digit;
+                    inSignificant = true;
+                }
+            }
+        } else {
+            result += maskChar;
+        }
+    }
+
+    return result;
 }
 
 /**
@@ -140,12 +231,14 @@ class Variable {
         this.picInfo = parsePic(definition.pic);
         this.initialValue = definition.value;
         this.sign = 1; // 1 for positive, -1 for negative
-        this.value = this.getInitialValue();
+        // Initialize children and parent BEFORE getInitialValue (which may call getTotalLength)
         this.children = [];
         this.parent = null;
         this.redefines = definition.redefines;
         this.redefinesVar = null; // Will be set to point to the redefined variable
         this.occursCount = definition.occurs || null; // Store OCCURS count for subscript handling
+        // Initialize value AFTER children array exists (for getTotalLength in groups)
+        this.value = this.getInitialValue();
     }
 
     getInitialValue() {
@@ -172,10 +265,19 @@ class Variable {
         }
 
         // Default initialization
-        if (this.picInfo.type === 'numeric') {
-            return '0'.repeat(this.picInfo.length);
+        // For groups (no PIC), we'll initialize properly after children are attached
+        // For elementary items with PIC, initialize based on type
+        if (this.pic) {
+            const len = this.picInfo.length;
+            if (this.picInfo.type === 'numeric') {
+                return '0'.repeat(len);
+            }
+            return ' '.repeat(len);
         }
-        return ' '.repeat(this.picInfo.length);
+
+        // Group item - use placeholder, will be reinitialized after children attached
+        // Return empty string initially, buildSymbolTable will fix this
+        return '';
     }
 
     getFigurativeValue(figurative) {
@@ -211,8 +313,9 @@ class Variable {
         }
 
         if (this.children.length > 0) {
-            // Group item - concatenate children values
-            return this.children.map(c => c.getValue()).join('');
+            // Group item - return value directly (it stores the full group data)
+            // For groups with OCCURS children, the storage is in this.value
+            return this.value;
         }
         return this.value;
     }
@@ -246,10 +349,30 @@ class Variable {
 
     /**
      * Get total length of this variable (including all children)
+     * For OCCURS items, returns the size of ONE occurrence
      */
     getTotalLength() {
         if (this.children.length > 0) {
-            return this.children.reduce((sum, c) => sum + c.getTotalLength(), 0);
+            // Sum up children, multiplying by their occursCount if they have one
+            return this.children.reduce((sum, c) => {
+                const childLen = c.getTotalLength();
+                const count = c.occursCount || 1;
+                return sum + (childLen * count);
+            }, 0);
+        }
+        return this.picInfo.length;
+    }
+
+    /**
+     * Get the size of one element (without OCCURS multiplication)
+     */
+    getElementSize() {
+        if (this.children.length > 0) {
+            return this.children.reduce((sum, c) => {
+                const childLen = c.getElementSize();
+                const count = c.occursCount || 1;
+                return sum + (childLen * count);
+            }, 0);
         }
         return this.picInfo.length;
     }
@@ -273,9 +396,10 @@ class Variable {
      * Applies COBOL edited picture formatting (Z, *, comma, period)
      */
     getDisplayValue() {
-        // For group items, concatenate display values of children
+        // For group items, return the stored value directly
+        // (it contains all occurrences if children have OCCURS)
         if (this.children.length > 0) {
-            return this.children.map(c => c.getDisplayValue()).join('');
+            return this.getValue();
         }
 
         if (this.picInfo.type === 'numeric') {
@@ -393,34 +517,67 @@ class Variable {
             let str = String(value);
             let offset = 0;
             for (const child of this.children) {
-                const len = child.picInfo.length;
+                const len = child.getTotalLength();
                 child.setValue(str.substring(offset, offset + len));
                 offset += len;
             }
+            // Update our own value too
+            this.value = str.padEnd(this.getTotalLength(), ' ').substring(0, this.getTotalLength());
         } else {
             // Handle sign for signed numeric variables
             if (this.picInfo.signed && typeof value === 'number') {
                 this.sign = value < 0 ? -1 : 1;
             }
             this.value = formatValue(value, this.pic);
+            // Propagate change to parent
+            this.propagateToParent();
         }
+    }
+
+    /**
+     * Propagate value change to parent group
+     */
+    propagateToParent() {
+        if (!this.parent) return;
+
+        // Find our offset in parent
+        let offset = 0;
+        for (const sibling of this.parent.children) {
+            if (sibling === this) break;
+            const len = sibling.getTotalLength();
+            const occursCount = sibling.occursCount || 1;
+            offset += len * occursCount;
+        }
+
+        // Update parent's value at our position
+        const myLen = this.getTotalLength();
+        const myOccurs = this.occursCount || 1;
+        const myValue = this.value.padEnd(myLen, ' ').substring(0, myLen);
+
+        const parentVal = this.parent.value || '';
+        const totalOffset = offset;
+        const newParentVal = parentVal.substring(0, totalOffset) +
+                            myValue +
+                            parentVal.substring(totalOffset + myLen);
+
+        this.parent.value = newParentVal;
+
+        // Recursively propagate up
+        this.parent.propagateToParent();
     }
 
     /**
      * Set raw value without reformatting (for values already in COBOL format from storage)
      */
     setRawValue(value) {
+        const str = String(value || '');
         if (this.children.length > 0) {
-            let str = String(value);
-            let offset = 0;
-            for (const child of this.children) {
-                const len = child.picInfo.length;
-                child.setRawValue(str.substring(offset, offset + len));
-                offset += len;
-            }
+            // For groups, store directly - don't distribute to children
+            // Children access this storage via offset calculations
+            const totalLen = this.getTotalLength();
+            this.value = str.padEnd(totalLen, ' ').substring(0, totalLen);
         } else {
-            // Just store as-is, padding/truncating to fit the PIC length
-            const str = String(value || '');
+            // Elementary item: store as-is, padding/truncating to fit the PIC length
             if (this.picInfo.type === 'numeric') {
                 this.value = str.padStart(this.picInfo.length, '0').substring(0, this.picInfo.length);
             } else {
@@ -957,7 +1114,19 @@ class Runtime {
         return name.toUpperCase().replace(/-/g, '_');
     }
 
-    setVariable(name, value) {
+    setVariable(target, value, interpreter = null) {
+        // Handle subscripted variables - target is an AST node
+        if (target && typeof target === 'object' && target.type === 'SUBSCRIPT') {
+            if (!interpreter) {
+                console.error('Interpreter required for subscript assignment');
+                return;
+            }
+            interpreter.setSubscriptedValue(target, value);
+            return;
+        }
+
+        // Simple variable name
+        const name = typeof target === 'object' && target.name ? target.name : target;
         const upperName = this.normalizeVarName(name);
         const variable = this.variables.get(upperName);
         if (variable) {
@@ -1409,6 +1578,34 @@ export class Interpreter {
                 }
             }
         }
+
+        // Re-initialize group variables now that children are attached
+        // This fixes the circular dependency where getInitialValue() was called
+        // in constructor before children existed
+        // Process in order from leaves to root to properly compose group values
+        const groupVars = [];
+        for (const [name, variable] of this.runtime.variables) {
+            if (variable.children.length > 0 && !variable.pic) {
+                groupVars.push(variable);
+            }
+        }
+        // Sort by level descending (process innermost first)
+        groupVars.sort((a, b) => b.level - a.level);
+
+        for (const variable of groupVars) {
+            // Build group value from children
+            let groupValue = '';
+            for (const child of variable.children) {
+                const childVal = child.getValue();
+                const childLen = child.getTotalLength();
+                const occursCount = child.occursCount || 1;
+                // Repeat child value for OCCURS
+                for (let i = 0; i < occursCount; i++) {
+                    groupValue += childVal.length === childLen ? childVal : childVal.padEnd(childLen, ' ').substring(0, childLen);
+                }
+            }
+            variable.value = groupValue;
+        }
     }
 
     /**
@@ -1734,7 +1931,7 @@ export class Interpreter {
         const value = this.evaluateExpression(stmt.source);
 
         for (const target of stmt.targets) {
-            this.runtime.setVariable(target, value);
+            this.runtime.setVariable(target, value, this);
         }
     }
 
@@ -2632,7 +2829,6 @@ export class Interpreter {
         // Get subscript values
         const subscripts = expr.subscripts.map(s => this.evaluateNumeric(s));
         const baseName = expr.name;
-        const subscript = subscripts[0] || 1;
 
         // Get the base variable
         const baseVar = this.runtime.getVariable(baseName);
@@ -2640,44 +2836,130 @@ export class Interpreter {
             return '';
         }
 
-        // Find the parent that has OCCURS (could be this variable or an ancestor)
-        const occursParent = this.findOccursParent(baseVar);
-        if (!occursParent) {
+        // Find all OCCURS levels from baseVar up to root
+        const occursChain = this.findOccursChain(baseVar);
+        if (occursChain.length === 0) {
             // No OCCURS found - just return the value
             return baseVar.getValue();
         }
 
-        // Calculate element size (size of one occurrence)
-        const elementSize = occursParent.getTotalLength();
-
-        // Get the root storage (considering REDEFINES)
-        const redefinesRoot = occursParent.findRedefinesRoot();
+        // Get the root storage (considering REDEFINES at the top level)
+        const topOccurs = occursChain[0];
+        const redefinesRoot = topOccurs.findRedefinesRoot();
         let fullStorage;
         if (redefinesRoot) {
             fullStorage = redefinesRoot.redefinesVar.getValue();
+        } else if (topOccurs.parent) {
+            fullStorage = topOccurs.parent.getValue();
         } else {
-            // Get storage from the OCCURS parent's own parent
-            if (occursParent.parent) {
-                fullStorage = occursParent.parent.getValue();
-            } else {
-                fullStorage = occursParent.getValue();
+            fullStorage = topOccurs.getValue();
+        }
+
+        // Calculate total offset by walking through each OCCURS dimension
+        let offset = 0;
+        for (let i = 0; i < occursChain.length; i++) {
+            const occursVar = occursChain[i];
+            const subscript = subscripts[i] || 1;
+            const elementSize = occursVar.getTotalLength();
+            offset += (subscript - 1) * elementSize;
+        }
+
+        // If accessing a child of the innermost OCCURS, add its offset within one element
+        const innermostOccurs = occursChain[occursChain.length - 1];
+        if (baseVar !== innermostOccurs) {
+            const childOffset = this.calculateChildOffset(baseVar, innermostOccurs);
+            offset += childOffset;
+        }
+
+        // Return the extracted value
+        const len = baseVar.getTotalLength();
+        return fullStorage.substring(offset, offset + len);
+    }
+
+    /**
+     * Find all OCCURS variables in the chain from variable up to root
+     * Returns array ordered from outermost to innermost OCCURS
+     */
+    findOccursChain(variable) {
+        const chain = [];
+        let current = variable;
+
+        // First check if the variable itself has OCCURS
+        if (current.occursCount) {
+            chain.unshift(current);
+        }
+
+        // Walk up the parent chain
+        while (current.parent) {
+            current = current.parent;
+            if (current.occursCount) {
+                chain.unshift(current);
             }
         }
 
-        // Calculate offset for the subscript (1-based to 0-based)
-        const occursOffset = (subscript - 1) * elementSize;
+        return chain;
+    }
 
-        // If we're accessing a child of the OCCURS item, calculate additional offset
-        if (baseVar !== occursParent) {
-            // Calculate offset of baseVar within one occurrence
-            const childOffset = this.calculateChildOffset(baseVar, occursParent);
-            const totalOffset = occursOffset + childOffset;
-            const len = baseVar.getTotalLength();
-            return fullStorage.substring(totalOffset, totalOffset + len);
+    /**
+     * Set value to a subscripted variable (e.g., TABLE(1, 2))
+     */
+    setSubscriptedValue(expr, value) {
+        const subscripts = expr.subscripts.map(s => this.evaluateNumeric(s));
+        const baseName = expr.name;
+
+        const baseVar = this.runtime.getVariable(baseName);
+        if (!baseVar) return;
+
+        // Find all OCCURS levels
+        const occursChain = this.findOccursChain(baseVar);
+        if (occursChain.length === 0) {
+            // No OCCURS - just set the value normally
+            baseVar.setValue(value);
+            return;
         }
 
-        // Return the full occurrence
-        return fullStorage.substring(occursOffset, occursOffset + elementSize);
+        // Get the storage holder (parent of outermost OCCURS or REDEFINES target)
+        const topOccurs = occursChain[0];
+        const redefinesRoot = topOccurs.findRedefinesRoot();
+        let storageVar;
+        if (redefinesRoot) {
+            storageVar = redefinesRoot.redefinesVar;
+        } else if (topOccurs.parent) {
+            storageVar = topOccurs.parent;
+        } else {
+            storageVar = topOccurs;
+        }
+
+        // Get current full storage
+        let fullStorage = storageVar.getValue();
+
+        // Calculate offset
+        let offset = 0;
+        for (let i = 0; i < occursChain.length; i++) {
+            const occursVar = occursChain[i];
+            const subscript = subscripts[i] || 1;
+            const elementSize = occursVar.getTotalLength();
+            offset += (subscript - 1) * elementSize;
+        }
+
+        // Add child offset if accessing a child of innermost OCCURS
+        const innermostOccurs = occursChain[occursChain.length - 1];
+        if (baseVar !== innermostOccurs) {
+            const childOffset = this.calculateChildOffset(baseVar, innermostOccurs);
+            offset += childOffset;
+        }
+
+        // Format the value according to the target's PIC
+        const formattedValue = formatValue(value, baseVar.pic);
+        const len = baseVar.picInfo.length;
+
+        // Replace the portion of storage
+        const newStorage = fullStorage.substring(0, offset) +
+                          formattedValue +
+                          fullStorage.substring(offset + len);
+
+        // Set the new storage value
+        storageVar.setRawValue(newStorage);
     }
 
     /**
