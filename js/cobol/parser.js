@@ -50,6 +50,10 @@ export const NodeType = {
     REWRITE: 'REWRITE',
     DELETE: 'DELETE',
     START: 'START',
+    SORT: 'SORT',
+    MERGE: 'MERGE',
+    RELEASE: 'RELEASE',
+    RETURN: 'RETURN',
 
     // Expressions
     IDENTIFIER: 'IDENTIFIER',
@@ -677,7 +681,8 @@ export class Parser {
             TokenType.COMPUTE, TokenType.IF, TokenType.EVALUATE, TokenType.PERFORM,
             TokenType.GO, TokenType.STOP, TokenType.EXIT, TokenType.INITIALIZE,
             TokenType.OPEN, TokenType.CLOSE, TokenType.READ, TokenType.WRITE,
-            TokenType.REWRITE, TokenType.DELETE, TokenType.START, TokenType.CONTINUE
+            TokenType.REWRITE, TokenType.DELETE, TokenType.START, TokenType.CONTINUE,
+            TokenType.SORT, TokenType.MERGE, TokenType.RELEASE, TokenType.RETURN
         );
     }
 
@@ -708,6 +713,10 @@ export class Parser {
             case TokenType.REWRITE: return this.parseRewrite();
             case TokenType.DELETE: return this.parseDelete();
             case TokenType.START: return this.parseStart();
+            case TokenType.SORT: return this.parseSort();
+            case TokenType.MERGE: return this.parseMerge();
+            case TokenType.RELEASE: return this.parseRelease();
+            case TokenType.RETURN: return this.parseReturn();
             case TokenType.CONTINUE:
                 this.advance();
                 this.skipPeriod();
@@ -1618,6 +1627,270 @@ export class Parser {
         }
         if (this.check(TokenType.END_START)) {
             this.advance();
+        }
+
+        this.skipPeriod();
+        return node;
+    }
+
+    /**
+     * Parse SORT statement
+     * SORT sort-file ON ASCENDING/DESCENDING KEY key-name
+     *      USING input-file / INPUT PROCEDURE proc-name
+     *      GIVING output-file / OUTPUT PROCEDURE proc-name
+     */
+    parseSort() {
+        this.expect(TokenType.SORT);
+
+        const node = new ASTNode(NodeType.SORT, {
+            sortFile: null,
+            keys: [],           // Array of {key, order: 'ASCENDING'|'DESCENDING'}
+            using: [],          // Input files
+            giving: [],         // Output files
+            inputProcedure: null,
+            outputProcedure: null,
+        });
+
+        // Sort file name
+        if (this.check(TokenType.IDENTIFIER)) {
+            node.sortFile = this.advance().value;
+        }
+
+        // Parse ON ASCENDING/DESCENDING KEY clauses
+        while (this.check(TokenType.ON) || this.check(TokenType.ASCENDING) || this.check(TokenType.DESCENDING)) {
+            this.optional(TokenType.ON);
+
+            let order = 'ASCENDING';
+            if (this.check(TokenType.ASCENDING)) {
+                this.advance();
+                order = 'ASCENDING';
+            } else if (this.check(TokenType.DESCENDING)) {
+                this.advance();
+                order = 'DESCENDING';
+            }
+
+            this.optional(TokenType.KEY);
+
+            // Parse key field(s)
+            while (this.check(TokenType.IDENTIFIER)) {
+                node.keys.push({
+                    key: this.advance().value,
+                    order: order
+                });
+                // Continue if more keys for same order
+                if (!this.check(TokenType.IDENTIFIER)) break;
+            }
+        }
+
+        // Parse USING or INPUT PROCEDURE
+        if (this.check(TokenType.USING)) {
+            this.advance();
+            while (this.check(TokenType.IDENTIFIER)) {
+                node.using.push(this.advance().value);
+            }
+        } else if (this.check(TokenType.INPUT_PROCEDURE)) {
+            this.advance();
+            this.optional(TokenType.IS);
+            if (this.check(TokenType.IDENTIFIER)) {
+                node.inputProcedure = this.advance().value;
+            }
+            if (this.checkAny(TokenType.THRU, TokenType.THROUGH)) {
+                this.advance();
+                if (this.check(TokenType.IDENTIFIER)) {
+                    node.inputProcedureThru = this.advance().value;
+                }
+            }
+        }
+
+        // Parse GIVING or OUTPUT PROCEDURE
+        if (this.check(TokenType.GIVING)) {
+            this.advance();
+            while (this.check(TokenType.IDENTIFIER)) {
+                node.giving.push(this.advance().value);
+            }
+        } else if (this.check(TokenType.OUTPUT_PROCEDURE)) {
+            this.advance();
+            this.optional(TokenType.IS);
+            if (this.check(TokenType.IDENTIFIER)) {
+                node.outputProcedure = this.advance().value;
+            }
+            if (this.checkAny(TokenType.THRU, TokenType.THROUGH)) {
+                this.advance();
+                if (this.check(TokenType.IDENTIFIER)) {
+                    node.outputProcedureThru = this.advance().value;
+                }
+            }
+        }
+
+        this.optional(TokenType.END_SORT);
+        this.skipPeriod();
+        return node;
+    }
+
+    /**
+     * Parse MERGE statement
+     * MERGE merge-file ON ASCENDING/DESCENDING KEY key-name
+     *       USING file-1 file-2 ...
+     *       GIVING output-file / OUTPUT PROCEDURE proc-name
+     */
+    parseMerge() {
+        this.expect(TokenType.MERGE);
+
+        const node = new ASTNode(NodeType.MERGE, {
+            mergeFile: null,
+            keys: [],
+            using: [],
+            giving: [],
+            outputProcedure: null,
+        });
+
+        // Merge file name
+        if (this.check(TokenType.IDENTIFIER)) {
+            node.mergeFile = this.advance().value;
+        }
+
+        // Parse ON ASCENDING/DESCENDING KEY clauses
+        while (this.check(TokenType.ON) || this.check(TokenType.ASCENDING) || this.check(TokenType.DESCENDING)) {
+            this.optional(TokenType.ON);
+
+            let order = 'ASCENDING';
+            if (this.check(TokenType.ASCENDING)) {
+                this.advance();
+                order = 'ASCENDING';
+            } else if (this.check(TokenType.DESCENDING)) {
+                this.advance();
+                order = 'DESCENDING';
+            }
+
+            this.optional(TokenType.KEY);
+
+            while (this.check(TokenType.IDENTIFIER)) {
+                node.keys.push({
+                    key: this.advance().value,
+                    order: order
+                });
+                if (!this.check(TokenType.IDENTIFIER)) break;
+            }
+        }
+
+        // USING (required for MERGE - at least 2 files)
+        if (this.check(TokenType.USING)) {
+            this.advance();
+            while (this.check(TokenType.IDENTIFIER)) {
+                node.using.push(this.advance().value);
+            }
+        }
+
+        // Parse GIVING or OUTPUT PROCEDURE
+        if (this.check(TokenType.GIVING)) {
+            this.advance();
+            while (this.check(TokenType.IDENTIFIER)) {
+                node.giving.push(this.advance().value);
+            }
+        } else if (this.check(TokenType.OUTPUT_PROCEDURE)) {
+            this.advance();
+            this.optional(TokenType.IS);
+            if (this.check(TokenType.IDENTIFIER)) {
+                node.outputProcedure = this.advance().value;
+            }
+            if (this.checkAny(TokenType.THRU, TokenType.THROUGH)) {
+                this.advance();
+                if (this.check(TokenType.IDENTIFIER)) {
+                    node.outputProcedureThru = this.advance().value;
+                }
+            }
+        }
+
+        this.optional(TokenType.END_MERGE);
+        this.skipPeriod();
+        return node;
+    }
+
+    /**
+     * Parse RELEASE statement (used in INPUT PROCEDURE of SORT)
+     * RELEASE record-name [FROM identifier]
+     */
+    parseRelease() {
+        this.expect(TokenType.RELEASE);
+
+        const node = new ASTNode(NodeType.RELEASE, {
+            record: null,
+            from: null,
+        });
+
+        if (this.check(TokenType.IDENTIFIER)) {
+            node.record = this.advance().value;
+        }
+
+        if (this.check(TokenType.FROM)) {
+            this.advance();
+            if (this.check(TokenType.IDENTIFIER)) {
+                node.from = this.advance().value;
+            }
+        }
+
+        this.skipPeriod();
+        return node;
+    }
+
+    /**
+     * Parse RETURN statement (used in OUTPUT PROCEDURE of SORT/MERGE)
+     * RETURN sort-file [INTO identifier] AT END statements [NOT AT END statements]
+     */
+    parseReturn() {
+        this.expect(TokenType.RETURN);
+
+        const node = new ASTNode(NodeType.RETURN, {
+            file: null,
+            into: null,
+            atEnd: [],
+            notAtEnd: [],
+        });
+
+        if (this.check(TokenType.IDENTIFIER)) {
+            node.file = this.advance().value;
+        }
+
+        // INTO clause
+        if (this.check(TokenType.INTO)) {
+            this.advance();
+            if (this.check(TokenType.IDENTIFIER)) {
+                node.into = this.advance().value;
+            }
+        }
+
+        // AT END / NOT AT END clauses
+        while (!this.check(TokenType.DOT) && !this.check(TokenType.EOF)) {
+            if (this.check(TokenType.NOT) && this.peek()?.type === TokenType.AT) {
+                // NOT AT END
+                this.advance(); // NOT
+                this.advance(); // AT
+                this.optional(TokenType.END);
+                while (!this.check(TokenType.DOT) && !this.check(TokenType.EOF) &&
+                       !this.check(TokenType.AT)) {
+                    if (this.isStatementStart()) {
+                        const stmt = this.parseStatement();
+                        if (stmt) node.notAtEnd.push(stmt);
+                    } else {
+                        break;
+                    }
+                }
+            } else if (this.check(TokenType.AT)) {
+                // AT END
+                this.advance();
+                this.optional(TokenType.END);
+                while (!this.check(TokenType.DOT) && !this.check(TokenType.EOF) &&
+                       !(this.check(TokenType.NOT) && this.peek()?.type === TokenType.AT)) {
+                    if (this.isStatementStart()) {
+                        const stmt = this.parseStatement();
+                        if (stmt) node.atEnd.push(stmt);
+                    } else {
+                        break;
+                    }
+                }
+            } else {
+                break;
+            }
         }
 
         this.skipPeriod();

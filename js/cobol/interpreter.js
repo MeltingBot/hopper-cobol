@@ -457,6 +457,29 @@ class CobolFile {
 
         return false;
     }
+
+    /**
+     * Read all records from the file (for SORT/MERGE)
+     */
+    readAll() {
+        return [...this.records];
+    }
+
+    /**
+     * Clear all records from the file (for SORT/MERGE output)
+     */
+    clear() {
+        this.records = [];
+        this.currentRecord = 0;
+        return true;
+    }
+
+    /**
+     * Set the current record buffer (for RETURN statement)
+     */
+    setCurrentRecord(record) {
+        this.recordBuffer = { ...record };
+    }
 }
 
 /**
@@ -667,6 +690,32 @@ class CobolFileIDB {
 
         return this.cursorRecords.length > 0;
     }
+
+    /**
+     * Read all records from the file (for SORT/MERGE)
+     */
+    async readAll() {
+        const fileName = this.getFileName();
+        return await this.storage.readAllRecords(fileName);
+    }
+
+    /**
+     * Clear all records from the file (for SORT/MERGE output)
+     */
+    async clear() {
+        const fileName = this.getFileName();
+        await this.storage.clearFile(fileName);
+        this.cursorRecords = [];
+        this.cursorPosition = 0;
+        return true;
+    }
+
+    /**
+     * Set the current record buffer (for RETURN statement)
+     */
+    setCurrentRecord(record) {
+        this.lastReadRecord = { ...record };
+    }
 }
 
 // Export storage configuration
@@ -860,6 +909,47 @@ class Runtime {
     // File operations
     getFile(name) {
         return this.files.get(name?.toUpperCase());
+    }
+
+    /**
+     * Get all field values for a record as an object
+     * Used by RELEASE statement for SORT
+     */
+    getRecordValues(recordName) {
+        const normalizedName = this.normalizeVarName(recordName);
+        const record = {};
+
+        // Look for variables that belong to this record
+        for (const [varName, variable] of this.variables) {
+            // Check if this variable is part of the record
+            if (variable.parent === normalizedName || varName === normalizedName) {
+                record[varName] = variable.getValue();
+            }
+        }
+
+        return Object.keys(record).length > 0 ? record : null;
+    }
+
+    /**
+     * Get the record definition (fields and their properties)
+     * Used by RELEASE statement for SORT
+     */
+    getRecordDefinition(recordName) {
+        const normalizedName = this.normalizeVarName(recordName);
+        const fields = [];
+
+        // Find all child variables of this record
+        for (const [varName, variable] of this.variables) {
+            if (variable.parent === normalizedName) {
+                fields.push({
+                    name: varName,
+                    length: variable.picInfo?.length || 1,
+                    type: variable.picInfo?.type || 'alphanumeric',
+                });
+            }
+        }
+
+        return fields.length > 0 ? { name: normalizedName, fields } : null;
     }
 }
 
@@ -1206,6 +1296,18 @@ export class Interpreter {
                 break;
             case NodeType.START:
                 await this.executeStart(stmt);
+                break;
+            case NodeType.SORT:
+                await this.executeSort(stmt);
+                break;
+            case NodeType.MERGE:
+                await this.executeMerge(stmt);
+                break;
+            case NodeType.RELEASE:
+                this.executeRelease(stmt);
+                break;
+            case NodeType.RETURN:
+                await this.executeReturn(stmt);
                 break;
         }
     }
@@ -1811,6 +1913,258 @@ export class Interpreter {
         } else if (success && stmt.notInvalidKey) {
             for (const s of stmt.notInvalidKey) {
                 await this.executeStatement(s);
+            }
+        }
+    }
+
+    /**
+     * Execute SORT statement
+     * Sorts records from input file(s) and writes to output file(s)
+     */
+    async executeSort(stmt) {
+        // Initialize sort work area
+        this.sortWorkArea = [];
+        this.sortKeys = stmt.keys || [];
+        this.sortFile = stmt.sortFile;
+
+        // Get input records
+        if (stmt.using && stmt.using.length > 0) {
+            // USING clause: read all records from input files
+            for (const inputFile of stmt.using) {
+                const file = this.runtime.getFile(inputFile);
+                if (file) {
+                    const records = await file.readAll();
+                    if (records) {
+                        this.sortWorkArea.push(...records);
+                    }
+                }
+            }
+        } else if (stmt.inputProcedure) {
+            // INPUT PROCEDURE: execute procedure that uses RELEASE
+            await this.executeProcedure(stmt.inputProcedure);
+        }
+
+        // Sort the records
+        this.sortWorkArea.sort((a, b) => {
+            for (const keyDef of this.sortKeys) {
+                const keyName = keyDef.key.toUpperCase().replace(/-/g, '_');
+                const aVal = a[keyName] ?? '';
+                const bVal = b[keyName] ?? '';
+
+                let comparison;
+                // Try numeric comparison first
+                const aNum = parseFloat(aVal);
+                const bNum = parseFloat(bVal);
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    comparison = aNum - bNum;
+                } else {
+                    // String comparison
+                    comparison = String(aVal).localeCompare(String(bVal));
+                }
+
+                if (comparison !== 0) {
+                    return keyDef.order === 'DESCENDING' ? -comparison : comparison;
+                }
+            }
+            return 0;
+        });
+
+        // Output sorted records
+        if (stmt.giving && stmt.giving.length > 0) {
+            // GIVING clause: write all records to output files
+            for (const outputFile of stmt.giving) {
+                const file = this.runtime.getFile(outputFile);
+                if (file) {
+                    // Clear the output file first
+                    await file.clear();
+                    // Write sorted records
+                    for (const record of this.sortWorkArea) {
+                        await file.write(record);
+                    }
+                }
+            }
+        } else if (stmt.outputProcedure) {
+            // OUTPUT PROCEDURE: execute procedure that uses RETURN
+            this.sortOutputIndex = 0;
+            await this.executeProcedure(stmt.outputProcedure);
+        }
+
+        // Clear work area
+        this.sortWorkArea = [];
+        this.sortKeys = [];
+        this.sortOutputIndex = 0;
+    }
+
+    /**
+     * Execute MERGE statement
+     * Merges records from multiple pre-sorted input files
+     */
+    async executeMerge(stmt) {
+        // Initialize merge work area
+        this.sortWorkArea = [];
+        this.sortKeys = stmt.keys || [];
+        this.sortFile = stmt.mergeFile;
+
+        // Read all records from all input files
+        if (stmt.using && stmt.using.length > 0) {
+            for (const inputFile of stmt.using) {
+                const file = this.runtime.getFile(inputFile);
+                if (file) {
+                    const records = await file.readAll();
+                    if (records) {
+                        this.sortWorkArea.push(...records);
+                    }
+                }
+            }
+        }
+
+        // Merge-sort the records (assuming input files are pre-sorted)
+        this.sortWorkArea.sort((a, b) => {
+            for (const keyDef of this.sortKeys) {
+                const keyName = keyDef.key.toUpperCase().replace(/-/g, '_');
+                const aVal = a[keyName] ?? '';
+                const bVal = b[keyName] ?? '';
+
+                let comparison;
+                const aNum = parseFloat(aVal);
+                const bNum = parseFloat(bVal);
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    comparison = aNum - bNum;
+                } else {
+                    comparison = String(aVal).localeCompare(String(bVal));
+                }
+
+                if (comparison !== 0) {
+                    return keyDef.order === 'DESCENDING' ? -comparison : comparison;
+                }
+            }
+            return 0;
+        });
+
+        // Output merged records
+        if (stmt.giving && stmt.giving.length > 0) {
+            for (const outputFile of stmt.giving) {
+                const file = this.runtime.getFile(outputFile);
+                if (file) {
+                    await file.clear();
+                    for (const record of this.sortWorkArea) {
+                        await file.write(record);
+                    }
+                }
+            }
+        } else if (stmt.outputProcedure) {
+            this.sortOutputIndex = 0;
+            await this.executeProcedure(stmt.outputProcedure);
+        }
+
+        // Clear work area
+        this.sortWorkArea = [];
+        this.sortKeys = [];
+        this.sortOutputIndex = 0;
+    }
+
+    /**
+     * Execute RELEASE statement
+     * Passes a record to the sort process (used in INPUT PROCEDURE)
+     */
+    executeRelease(stmt) {
+        // Get the record to release
+        const recordName = stmt.record;
+
+        if (stmt.from) {
+            // RELEASE record FROM identifier
+            const value = this.runtime.getValue(stmt.from);
+            // Build a record object from the value
+            const record = {};
+            const recordDef = this.runtime.getRecordDefinition(recordName);
+            if (recordDef && recordDef.fields) {
+                // Map value to record fields
+                let offset = 0;
+                for (const field of recordDef.fields) {
+                    const fieldName = field.name.toUpperCase().replace(/-/g, '_');
+                    const len = field.length || 1;
+                    record[fieldName] = String(value).substr(offset, len);
+                    offset += len;
+                }
+            } else {
+                // Simple case: use record name as single field
+                record[recordName.toUpperCase().replace(/-/g, '_')] = value;
+            }
+            this.sortWorkArea.push(record);
+        } else {
+            // RELEASE record - get current record values
+            const recordValues = this.runtime.getRecordValues(recordName);
+            if (recordValues) {
+                this.sortWorkArea.push({ ...recordValues });
+            }
+        }
+    }
+
+    /**
+     * Execute RETURN statement
+     * Retrieves the next sorted record (used in OUTPUT PROCEDURE)
+     */
+    async executeReturn(stmt) {
+        // Check if there are more records
+        if (!this.sortWorkArea || this.sortOutputIndex >= this.sortWorkArea.length) {
+            // AT END condition
+            if (stmt.atEnd) {
+                for (const s of stmt.atEnd) {
+                    await this.executeStatement(s);
+                }
+            }
+            return;
+        }
+
+        // Get the next sorted record
+        const record = this.sortWorkArea[this.sortOutputIndex++];
+
+        if (stmt.into) {
+            // RETURN file INTO identifier - copy record to identifier
+            const recordValues = Object.values(record).join('');
+            this.runtime.setVariable(stmt.into, recordValues);
+        } else {
+            // Update the file's record area
+            const file = this.runtime.getFile(stmt.file);
+            if (file) {
+                file.setCurrentRecord(record);
+            }
+        }
+
+        // NOT AT END condition
+        if (stmt.notAtEnd) {
+            for (const s of stmt.notAtEnd) {
+                await this.executeStatement(s);
+            }
+        }
+    }
+
+    /**
+     * Execute a named procedure (section or paragraph)
+     */
+    async executeProcedure(procName) {
+        // Find the procedure in the AST
+        const procedures = this.ast.procedure?.sections || [];
+
+        for (const section of procedures) {
+            if (section.name?.toUpperCase() === procName?.toUpperCase()) {
+                // Execute all paragraphs in this section
+                for (const para of section.paragraphs || []) {
+                    for (const stmt of para.statements || []) {
+                        await this.executeStatement(stmt);
+                    }
+                }
+                return;
+            }
+
+            // Check paragraphs within sections
+            for (const para of section.paragraphs || []) {
+                if (para.name?.toUpperCase() === procName?.toUpperCase()) {
+                    for (const stmt of para.statements || []) {
+                        await this.executeStatement(stmt);
+                    }
+                    return;
+                }
             }
         }
     }
