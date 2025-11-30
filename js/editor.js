@@ -948,6 +948,56 @@ export function downloadAs(format) {
 }
 
 /**
+ * Trigger file import dialog
+ */
+export function importCobFile() {
+    const fileInput = document.getElementById('cobFileInput');
+    if (fileInput) {
+        fileInput.click();
+    }
+}
+
+/**
+ * Handle imported .cob file
+ * @param {Event} event - File input change event
+ */
+export function handleCobFileImport(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const content = e.target.result;
+        const codeEditor = document.getElementById('codeEditor');
+
+        if (codeEditor) {
+            codeEditor.value = content;
+            updateLineNumbers();
+
+            // Reset state
+            cards = [];
+            isPunched = false;
+            isCompiled = false;
+            cobolRuntime = null;
+            updateWorkflowButtons();
+            clearCardStations();
+
+            showOutput('success', `✓ Fichier "${file.name}" importé`);
+            showOutput('info', `${content.split('\n').length} lignes chargées`);
+        }
+    };
+
+    reader.onerror = function() {
+        showOutput('error', `✗ Erreur de lecture du fichier`);
+    };
+
+    reader.readAsText(file);
+
+    // Reset input to allow re-importing same file
+    event.target.value = '';
+}
+
+/**
  * Set editor code content
  * @param {string} code - The code to set
  */

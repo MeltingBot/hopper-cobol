@@ -26,6 +26,8 @@ window.compileAndRun = editor.compileAndRun;
 window.clearAll = editor.clearAll;
 window.downloadCards = editor.downloadCards;
 window.downloadAs = editor.downloadAs;
+window.importCobFile = editor.importCobFile;
+window.handleCobFileImport = editor.handleCobFileImport;
 window.prevCard = editor.prevCard;
 window.nextCard = editor.nextCard;
 

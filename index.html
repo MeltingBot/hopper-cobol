@@ -45,6 +45,7 @@
                         <textarea class="code-editor" id="codeEditor" spellcheck="false"></textarea>
                     </div>
                     <div class="controls">
+                        <button class="btn btn-secondary" onclick="importCobFile()">↑ Import</button>
                         <button class="btn btn-primary" onclick="generateCards()">⚡ Perforer</button>
                         <button class="btn btn-compile" onclick="compileOnly()" id="btnCompile" disabled>⚙ Compiler</button>
                         <button class="btn btn-success" onclick="runProgram()" id="btnRun" disabled>▶ Exécuter</button>
@@ -52,6 +53,7 @@
                         <button class="btn btn-stop hidden" onclick="stopDebugMode()" id="btnStopDebug">■ Stop</button>
                         <button class="btn btn-danger" onclick="clearAll()">✕ Effacer</button>
                         <button class="btn btn-secondary" onclick="downloadCards()">↓ Export</button>
+                        <input type="file" id="cobFileInput" accept=".cob,.cbl,.txt" style="display:none" onchange="handleCobFileImport(event)">
                     </div>
                 </div>
             </div>
