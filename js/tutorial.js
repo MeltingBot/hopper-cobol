@@ -14,14 +14,10 @@ let examples = [];
 // Category icons and colors
 const categoryInfo = {
     'ECRAN': { icon: '🖥️', color: '#00ff88' },
-    'FICHIERS': { icon: '🗂️', color: '#4a9eff' },
-    'COMPTA': { icon: '💰', color: '#ffcc00' },
-    'LOGISTIQUE': { icon: '📦', color: '#ff8844' },
+    'ERP': { icon: '🏢', color: '#4a9eff' },
     'RH': { icon: '👥', color: '#aa66ff' },
-    'REPORTING': { icon: '📊', color: '#66ccff' },
     'BANQUE': { icon: '🏦', color: '#44cc88' },
     'TOURISME': { icon: '🏨', color: '#ff6699' },
-    'ACHATS': { icon: '🛒', color: '#88cc44' },
     'BATCH': { icon: '⚙️', color: '#888888' }
 };
 

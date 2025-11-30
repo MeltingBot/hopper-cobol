@@ -9,23 +9,37 @@
   {
     "id": "gestion-clients",
     "title": "Gestion Clients",
-    "category": "FICHIERS",
+    "category": "ERP",
     "description": "CRUD complet sur un fichier clients indexé avec interface IBM 3270.",
     "file": "gestion-clients.cob"
   },
   {
     "id": "facturation",
     "title": "Facturation",
-    "category": "COMPTA",
+    "category": "ERP",
     "description": "Génère une facture à partir des articles commandés. Calcul TVA et total.",
     "file": "facturation.cob"
   },
   {
     "id": "gestion-stock",
     "title": "Gestion Stock",
-    "category": "LOGISTIQUE",
+    "category": "ERP",
     "description": "Entrées/sorties de stock avec alertes de seuil minimum.",
     "file": "gestion-stock.cob"
+  },
+  {
+    "id": "commandes-fournisseurs",
+    "title": "Commandes Fournisseurs",
+    "category": "ERP",
+    "description": "Gestion complete: fournisseurs, produits, commandes, reception.",
+    "file": "commandes-fournisseurs.cob"
+  },
+  {
+    "id": "rapport-ventes",
+    "title": "Rapport Ventes",
+    "category": "ERP",
+    "description": "Génère un rapport de ventes avec totaux par vendeur et global.",
+    "file": "rapport-ventes.cob"
   },
   {
     "id": "paie-employes",
@@ -33,13 +47,6 @@
     "category": "RH",
     "description": "Calcul de bulletin de paie avec heures sup, cotisations et net à payer.",
     "file": "paie-employes.cob"
-  },
-  {
-    "id": "rapport-ventes",
-    "title": "Rapport Ventes",
-    "category": "REPORTING",
-    "description": "Génère un rapport de ventes avec totaux par vendeur et global.",
-    "file": "rapport-ventes.cob"
   },
   {
     "id": "banque-comptes",
@@ -54,13 +61,6 @@
     "category": "TOURISME",
     "description": "Système de réservation hôtelière avec disponibilités et confirmations.",
     "file": "reservations.cob"
-  },
-  {
-    "id": "commandes-fournisseurs",
-    "title": "Commandes Fournisseurs",
-    "category": "ACHATS",
-    "description": "Gestion complete: fournisseurs, produits, commandes, reception.",
-    "file": "commandes-fournisseurs.cob"
   },
   {
     "id": "import-export-csv",
