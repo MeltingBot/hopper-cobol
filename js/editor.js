@@ -116,11 +116,29 @@ export function generateCards() {
     punchingInProgress = true;
     updateWorkflowButtons();
 
-    cards = code.split('\n').map((line, index) => ({
+    // Filter out comment lines (* in column 7 or *> inline comments)
+    const lines = code.split('\n');
+    const filteredLines = lines.filter(line => {
+        // Skip empty lines
+        if (line.trim() === '') return false;
+        // Skip full-line comments (* in column 7)
+        if (line.length >= 7 && line[6] === '*') return false;
+        // Skip lines that are only *> comments
+        if (line.trim().startsWith('*>')) return false;
+        return true;
+    });
+
+    const skippedCount = lines.length - filteredLines.length;
+
+    cards = filteredLines.map((line, index) => ({
         seq: String(index + 1).padStart(6, '0'),
         text: line.padEnd(80, ' ').substring(0, 80),
         original: line
     }));
+
+    if (skippedCount > 0) {
+        showOutput('info', `${skippedCount} ligne(s) ignorée(s) (commentaires/vides)`);
+    }
 
     // Clear both stations
     clearCardStations();
