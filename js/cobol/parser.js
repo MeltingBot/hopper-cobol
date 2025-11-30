@@ -867,7 +867,7 @@ export class Parser {
                 this.advance();
                 this.optional(TokenType.NUMBER); // LINE NUMBER IS ...
                 this.optional(TokenType.IS);
-                if (this.check(TokenType.NUMBER)) {
+                if (this.checkAny(TokenType.NUMBER, TokenType.LEVEL_NUMBER)) {
                     node.line = parseInt(this.advance().value);
                 } else if (this.check(TokenType.IDENTIFIER)) {
                     node.line = this.advance().value;
@@ -878,7 +878,7 @@ export class Parser {
                 this.advance();
                 this.optional(TokenType.NUMBER); // COLUMN NUMBER IS ...
                 this.optional(TokenType.IS);
-                if (this.check(TokenType.NUMBER)) {
+                if (this.checkAny(TokenType.NUMBER, TokenType.LEVEL_NUMBER)) {
                     node.column = parseInt(this.advance().value);
                 } else if (this.check(TokenType.IDENTIFIER)) {
                     node.column = this.advance().value;
@@ -940,7 +940,7 @@ export class Parser {
             else if (this.check(TokenType.FOREGROUND_COLOR)) {
                 this.advance();
                 this.optional(TokenType.IS);
-                if (this.check(TokenType.NUMBER)) {
+                if (this.checkAny(TokenType.NUMBER, TokenType.LEVEL_NUMBER)) {
                     node.foregroundColor = parseInt(this.advance().value);
                 } else if (this.check(TokenType.IDENTIFIER)) {
                     node.foregroundColor = this.advance().value;
@@ -949,7 +949,7 @@ export class Parser {
             else if (this.check(TokenType.BACKGROUND_COLOR)) {
                 this.advance();
                 this.optional(TokenType.IS);
-                if (this.check(TokenType.NUMBER)) {
+                if (this.checkAny(TokenType.NUMBER, TokenType.LEVEL_NUMBER)) {
                     node.backgroundColor = parseInt(this.advance().value);
                 } else if (this.check(TokenType.IDENTIFIER)) {
                     node.backgroundColor = this.advance().value;
@@ -972,7 +972,7 @@ export class Parser {
     }
 
     /**
-     * Parse ACCEPT statement
+     * Parse ACCEPT statement with screen control extensions
      */
     parseAccept() {
         this.expect(TokenType.ACCEPT);
@@ -980,16 +980,153 @@ export class Parser {
         const node = new ASTNode(NodeType.ACCEPT, {
             target: null,
             from: null,
+            // Screen control extensions
+            line: null,
+            column: null,
+            highlight: false,
+            lowlight: false,
+            blink: false,
+            reverseVideo: false,
+            underline: false,
+            bell: false,
+            foregroundColor: null,
+            backgroundColor: null,
+            // Input control
+            secure: false,      // Hide input (like password)
+            required: false,    // Field must be filled
+            full: false,        // Field must be completely filled
+            auto: false,        // Auto-tab when filled
+            cursor: null,       // Initial cursor position
+            size: null,         // Input field size
         });
 
+        // Target variable
         if (this.check(TokenType.IDENTIFIER)) {
             node.target = this.advance().value;
         }
 
-        if (this.check(TokenType.FROM)) {
-            this.advance();
-            if (this.check(TokenType.IDENTIFIER)) {
-                node.from = this.advance().value;
+        // Parse clauses until period or next statement
+        while (!this.check(TokenType.DOT) && !this.check(TokenType.EOF) &&
+               !this.isStatementStart() && !this.check(TokenType.END_IF) &&
+               !this.check(TokenType.END_PERFORM) && !this.check(TokenType.ELSE)) {
+
+            // FROM source
+            if (this.check(TokenType.FROM)) {
+                this.advance();
+                if (this.check(TokenType.IDENTIFIER)) {
+                    node.from = this.advance().value;
+                }
+            }
+            // LINE number
+            else if (this.check(TokenType.LINE)) {
+                this.advance();
+                this.optional(TokenType.NUMBER);
+                this.optional(TokenType.IS);
+                if (this.checkAny(TokenType.NUMBER, TokenType.LEVEL_NUMBER)) {
+                    node.line = parseInt(this.advance().value);
+                } else if (this.check(TokenType.IDENTIFIER)) {
+                    node.line = this.advance().value;
+                }
+            }
+            // COLUMN/COL/POSITION number
+            else if (this.checkAny(TokenType.COLUMN, TokenType.COL, TokenType.POSITION)) {
+                this.advance();
+                this.optional(TokenType.NUMBER);
+                this.optional(TokenType.IS);
+                if (this.checkAny(TokenType.NUMBER, TokenType.LEVEL_NUMBER)) {
+                    node.column = parseInt(this.advance().value);
+                } else if (this.check(TokenType.IDENTIFIER)) {
+                    node.column = this.advance().value;
+                }
+            }
+            // WITH (optional prefix for attributes)
+            else if (this.check(TokenType.WITH)) {
+                this.advance();
+            }
+            // Display attributes
+            else if (this.check(TokenType.HIGHLIGHT)) {
+                this.advance();
+                node.highlight = true;
+            }
+            else if (this.check(TokenType.LOWLIGHT)) {
+                this.advance();
+                node.lowlight = true;
+            }
+            else if (this.check(TokenType.BLINK)) {
+                this.advance();
+                node.blink = true;
+            }
+            else if (this.check(TokenType.REVERSE_VIDEO)) {
+                this.advance();
+                node.reverseVideo = true;
+            }
+            else if (this.check(TokenType.UNDERLINE)) {
+                this.advance();
+                node.underline = true;
+            }
+            else if (this.checkAny(TokenType.BELL, TokenType.BEEP)) {
+                this.advance();
+                node.bell = true;
+            }
+            // Input control attributes
+            else if (this.check(TokenType.SECURE)) {
+                this.advance();
+                node.secure = true;
+            }
+            else if (this.check(TokenType.REQUIRED)) {
+                this.advance();
+                node.required = true;
+            }
+            else if (this.check(TokenType.FULL)) {
+                this.advance();
+                node.full = true;
+            }
+            else if (this.check(TokenType.AUTO)) {
+                this.advance();
+                node.auto = true;
+            }
+            // CURSOR position
+            else if (this.check(TokenType.CURSOR)) {
+                this.advance();
+                this.optional(TokenType.IS);
+                if (this.checkAny(TokenType.NUMBER, TokenType.LEVEL_NUMBER)) {
+                    node.cursor = parseInt(this.advance().value);
+                } else if (this.check(TokenType.IDENTIFIER)) {
+                    node.cursor = this.advance().value;
+                }
+            }
+            // SIZE
+            else if (this.check(TokenType.SIZE)) {
+                this.advance();
+                this.optional(TokenType.IS);
+                if (this.checkAny(TokenType.NUMBER, TokenType.LEVEL_NUMBER)) {
+                    node.size = parseInt(this.advance().value);
+                } else if (this.check(TokenType.IDENTIFIER)) {
+                    node.size = this.advance().value;
+                }
+            }
+            // FOREGROUND-COLOR / BACKGROUND-COLOR
+            else if (this.check(TokenType.FOREGROUND_COLOR)) {
+                this.advance();
+                this.optional(TokenType.IS);
+                if (this.checkAny(TokenType.NUMBER, TokenType.LEVEL_NUMBER)) {
+                    node.foregroundColor = parseInt(this.advance().value);
+                } else if (this.check(TokenType.IDENTIFIER)) {
+                    node.foregroundColor = this.advance().value;
+                }
+            }
+            else if (this.check(TokenType.BACKGROUND_COLOR)) {
+                this.advance();
+                this.optional(TokenType.IS);
+                if (this.checkAny(TokenType.NUMBER, TokenType.LEVEL_NUMBER)) {
+                    node.backgroundColor = parseInt(this.advance().value);
+                } else if (this.check(TokenType.IDENTIFIER)) {
+                    node.backgroundColor = this.advance().value;
+                }
+            }
+            else {
+                // Unknown token, stop parsing clauses
+                break;
             }
         }
 
