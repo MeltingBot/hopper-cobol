@@ -19,6 +19,7 @@ export const NodeType = {
     // Data items
     DATA_ITEM: 'DATA_ITEM',
     CONDITION_NAME: 'CONDITION_NAME',  // 88 level condition names
+    RENAMES: 'RENAMES',                  // 66 level renames
     FILE_DESCRIPTION: 'FILE_DESCRIPTION',
     FILE_CONTROL: 'FILE_CONTROL',
     SELECT_STATEMENT: 'SELECT_STATEMENT',
@@ -512,6 +513,11 @@ export class Parser {
             return this.parseConditionName();
         }
 
+        // Level 66 = RENAMES (special handling)
+        if (level === 66) {
+            return this.parseRenames();
+        }
+
         const node = new ASTNode(NodeType.DATA_ITEM, {
             level,
             name: null,
@@ -695,6 +701,43 @@ export class Parser {
             default:
                 return 'DISPLAY';
         }
+    }
+
+    /**
+     * Parse 66 level RENAMES clause
+     * Syntax: 66 new-name RENAMES field-1 [THRU|THROUGH field-2].
+     */
+    parseRenames() {
+        const node = new ASTNode(NodeType.RENAMES, {
+            level: 66,
+            name: null,
+            renamesFrom: null,  // Starting field name
+            renamesThru: null,  // Ending field name (optional)
+        });
+
+        // Get the new name
+        if (this.check(TokenType.IDENTIFIER)) {
+            node.name = this.advance().value;
+        }
+
+        // Expect RENAMES keyword
+        this.expect(TokenType.RENAMES);
+
+        // Get the first field name
+        if (this.check(TokenType.IDENTIFIER)) {
+            node.renamesFrom = this.advance().value;
+        }
+
+        // Check for THRU/THROUGH
+        if (this.checkAny(TokenType.THRU, TokenType.THROUGH)) {
+            this.advance();
+            if (this.check(TokenType.IDENTIFIER)) {
+                node.renamesThru = this.advance().value;
+            }
+        }
+
+        this.skipPeriod();
+        return node;
     }
 
     /**

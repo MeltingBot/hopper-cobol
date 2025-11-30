@@ -1210,6 +1210,111 @@ class CobolFileIDB {
     }
 }
 
+/**
+ * RenamesVariable class - represents a 66 level RENAMES clause
+ * Acts as an alias to a contiguous range of fields
+ */
+class RenamesVariable {
+    constructor(name, fromVar, thruVar = null) {
+        this.name = name;
+        this.level = 66;
+        this.fromVar = fromVar;
+        this.thruVar = thruVar || fromVar;  // If no THRU, just rename the single field
+        this.children = [];
+        this.parent = null;
+
+        // Collect all variables in the range
+        this.rangeVars = this.collectRangeVars();
+    }
+
+    /**
+     * Collect all variables in the range from fromVar to thruVar
+     */
+    collectRangeVars() {
+        const vars = [];
+
+        if (!this.fromVar.parent) {
+            // fromVar is at 01 level - just use it
+            vars.push(this.fromVar);
+            return vars;
+        }
+
+        const parent = this.fromVar.parent;
+        const siblings = parent.children;
+        let inRange = false;
+
+        for (const sibling of siblings) {
+            if (sibling === this.fromVar) {
+                inRange = true;
+            }
+            if (inRange) {
+                vars.push(sibling);
+            }
+            if (sibling === this.thruVar) {
+                break;
+            }
+        }
+
+        return vars;
+    }
+
+    /**
+     * Calculate total length of the renamed range
+     */
+    getStorageLength() {
+        let totalLen = 0;
+        for (const v of this.rangeVars) {
+            totalLen += v.getStorageLength ? v.getStorageLength() : (v.picInfo?.length || 0);
+        }
+        return totalLen;
+    }
+
+    /**
+     * Get concatenated value of all fields in the range
+     */
+    getValue() {
+        let result = '';
+        for (const v of this.rangeVars) {
+            const val = v.getValue ? v.getValue() : v.value;
+            result += val;
+        }
+        return result;
+    }
+
+    /**
+     * Get display value (same as getValue for RENAMES)
+     */
+    getDisplayValue() {
+        return this.getValue();
+    }
+
+    /**
+     * Set value across the range (distributes value from left to right)
+     */
+    setValue(value) {
+        const strValue = String(value);
+        let pos = 0;
+
+        for (const v of this.rangeVars) {
+            const len = v.getStorageLength ? v.getStorageLength() : (v.picInfo?.length || 0);
+            const part = strValue.substring(pos, pos + len);
+            if (v.setValue) {
+                v.setValue(part);
+            } else {
+                v.value = part;
+            }
+            pos += len;
+        }
+    }
+
+    /**
+     * Raw value set (same as setValue for RENAMES)
+     */
+    setRawValue(value) {
+        this.setValue(value);
+    }
+}
+
 // Export storage configuration
 export const USE_INDEXEDDB = true; // IndexedDB storage enabled
 
@@ -1220,6 +1325,7 @@ class Runtime {
     constructor(callbacks = {}) {
         this.variables = new Map();
         this.conditionNames = new Map();  // 88 level condition names: name -> {parentVar, values}
+        this.renames = new Map();  // 66 level renames: name -> {renamesFrom, renamesThru}
         this.files = new Map();
         this.paragraphs = new Map();
         this.sections = new Map();
@@ -1668,6 +1774,19 @@ export class Interpreter {
                     continue;  // Don't add 88 levels to variable stack
                 }
 
+                // Handle 66 level RENAMES
+                if (item.type === NodeType.RENAMES || item.level === 66) {
+                    // Store RENAMES definition for later resolution
+                    this.runtime.renames.set(
+                        this.runtime.normalizeVarName(item.name),
+                        {
+                            renamesFrom: item.renamesFrom,
+                            renamesThru: item.renamesThru
+                        }
+                    );
+                    continue;  // Don't add 66 levels to variable stack yet
+                }
+
                 const variable = new Variable(item);
                 const isFiller = item.name === 'FILLER';
 
@@ -1721,6 +1840,27 @@ export class Interpreter {
                     variable.redefinesVar = targetVar;
                 }
             }
+        }
+
+        // Resolve RENAMES (66 level) - create variables that span multiple fields
+        for (const [renamesName, renamesDef] of this.runtime.renames) {
+            const fromVar = this.runtime.variables.get(
+                this.runtime.normalizeVarName(renamesDef.renamesFrom)
+            );
+
+            if (!fromVar) continue;
+
+            // If there's a THRU clause, we need to find the range
+            let thruVar = null;
+            if (renamesDef.renamesThru) {
+                thruVar = this.runtime.variables.get(
+                    this.runtime.normalizeVarName(renamesDef.renamesThru)
+                );
+            }
+
+            // Create a RenamesVariable that acts as an alias to the range
+            const renamesVariable = new RenamesVariable(renamesName, fromVar, thruVar);
+            this.runtime.variables.set(renamesName, renamesVariable);
         }
 
         // Create implicit index variables for INDEXED BY clauses
