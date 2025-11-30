@@ -8,17 +8,32 @@ A web-based COBOL emulator with IBM 029 punch card visualization, running entire
 
 ## Features
 
-- **Full COBOL-85 Interpreter** - Runs COBOL programs directly in JavaScript
+- **Multi-Dialect COBOL Interpreter** - Supports COBOL-68, 74, 85, 2002, and 2014
+- **Auto-Detection** - Automatically detects the appropriate dialect from source code
 - **Punch Card Visualization** - Realistic IBM 029 keypunch simulation with animations
 - **Debug Mode** - Step-by-step execution with variable inspection
 - **File I/O** - Simulated SEQUENTIAL and INDEXED file operations via IndexedDB
+- **SORT/MERGE** - Full support for sorting and merging data files
 - **10 Example Programs** - Banking, invoicing, payroll, inventory management, etc.
 - **Retro Terminal UI** - Authentic phosphor green aesthetic
+
+## Supported COBOL Dialects
+
+| Dialect | Standard | Key Features |
+|---------|----------|--------------|
+| COBOL-68 | ANSI | Basic COBOL, GO TO, PERFORM |
+| COBOL-74 | ANSI X3.23-1974 | CALL, nested programs |
+| COBOL-85 | ANSI X3.23-1985 | END-IF, EVALUATE, inline PERFORM |
+| COBOL-2002 | ISO/IEC 1989:2002 | OOP, FUNCTION, Unicode |
+| COBOL-2014 | ISO/IEC 1989:2014 | Dynamic tables, JSON support |
+
+Use the dialect selector in the editor to choose a specific version or let auto-detection find the right one.
 
 ## Supported COBOL Features
 
 ### Data Division
 - Level numbers (01-49, 66, 77, 88)
+- 88-level condition names with VALUE/VALUES/THRU
 - PIC clauses (X, 9, A, V, S, Z)
 - VALUE clauses
 - WORKING-STORAGE and FILE SECTION
@@ -31,6 +46,7 @@ A web-based COBOL emulator with IBM 029 punch card visualization, running entire
 - EVALUATE/WHEN/END-EVALUATE
 - PERFORM (TIMES, UNTIL, VARYING, inline)
 - GO TO, EXIT, STOP RUN
+- SORT/MERGE with INPUT/OUTPUT PROCEDURE
 - File operations: OPEN, READ, WRITE, REWRITE, DELETE, CLOSE
 
 ## Getting Started
@@ -81,7 +97,8 @@ hopper-cobol/
 │       ├── index.js        # CobolRuntime API
 │       ├── lexer.js        # Tokenizer
 │       ├── parser.js       # AST builder
-│       └── interpreter.js  # Execution engine
+│       ├── interpreter.js  # Execution engine
+│       └── dialects.js     # Dialect configuration & detection
 └── cobol-examples/         # Sample programs
 ```
 
