@@ -311,9 +311,13 @@ export class CobolRuntime {
 
     /**
      * Execute the compiled program
+     * @param {object} options - Execution options
+     * @param {boolean} options.stepMode - Enable step-by-step execution
+     * @param {Function} options.onStep - Callback for each step in debug mode
+     * @param {Function} options.onInterpreterReady - Callback when interpreter is ready
      * @returns {Promise<object>} Execution result
      */
-    async run() {
+    async run(options = {}) {
         if (!this.ast) {
             return {
                 success: false,
@@ -328,6 +332,19 @@ export class CobolRuntime {
                 callbacks: this.callbacks,
                 dataManager: this.dataManager,
             });
+
+            // Enable step mode if requested
+            if (options.stepMode) {
+                this.interpreter.setStepMode(true);
+                if (options.onStep) {
+                    this.interpreter.onStep = options.onStep;
+                }
+            }
+
+            // Notify that interpreter is ready (for debug mode)
+            if (options.onInterpreterReady) {
+                options.onInterpreterReady(this.interpreter);
+            }
 
             await this.interpreter.run();
 

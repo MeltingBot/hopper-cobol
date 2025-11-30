@@ -697,6 +697,23 @@ export class Parser {
      * Parse a value (literal or figurative constant)
      */
     parseValue() {
+        // Handle ALL "x" - repeat character to fill field
+        if (this.check(TokenType.ALL)) {
+            this.advance();
+            if (this.check(TokenType.STRING_LITERAL)) {
+                return { type: 'all', value: this.advance().value };
+            }
+            // ALL followed by figurative constant
+            if (this.checkAny(TokenType.SPACES, TokenType.SPACE)) {
+                this.advance();
+                return { type: 'figurative', value: 'SPACES' };
+            }
+            if (this.checkAny(TokenType.ZEROS, TokenType.ZEROES, TokenType.ZERO)) {
+                this.advance();
+                return { type: 'figurative', value: 'ZEROS' };
+            }
+        }
+
         if (this.check(TokenType.STRING_LITERAL)) {
             return { type: 'string', value: this.advance().value };
         }

@@ -29,6 +29,7 @@ let steppedCards = [];
 let debugMode = false;
 let debugInterpreter = null;
 let previousVariables = {};
+let breakpoints = new Set();  // Set of line numbers with breakpoints
 
 // Screen control state (IBM 3270 style - 24 lines x 80 columns)
 const SCREEN_ROWS = 24;
@@ -245,11 +246,25 @@ const DEFAULT_CODE = `       IDENTIFICATION DIVISION.
  */
 export function initEditor() {
     const codeEditor = document.getElementById('codeEditor');
+    const lineNumbers = document.getElementById('lineNumbers');
     if (!codeEditor) return;
 
     codeEditor.addEventListener('input', updateLineNumbers);
     codeEditor.addEventListener('scroll', syncLineNumbersScroll);
     codeEditor.value = DEFAULT_CODE;
+
+    // Add click handler for breakpoints on line numbers (also works from editor)
+    if (lineNumbers) {
+        lineNumbers.addEventListener('click', (e) => {
+            const lineSpan = e.target.closest('.line-number');
+            if (lineSpan) {
+                const lineNum = parseInt(lineSpan.dataset.line, 10);
+                if (!isNaN(lineNum)) {
+                    toggleBreakpoint(lineNum);
+                }
+            }
+        });
+    }
 
     updateLineNumbers();
     renderPunchCard('');
@@ -264,7 +279,43 @@ export function updateLineNumbers() {
     if (!codeEditor || !lineNumbers) return;
 
     const lineCount = codeEditor.value.split('\n').length;
-    lineNumbers.innerHTML = Array.from({ length: lineCount }, (_, i) => i + 1).join('<br>');
+    const lines = Array.from({ length: lineCount }, (_, i) => {
+        const lineNum = i + 1;
+        const hasBreakpoint = breakpoints.has(lineNum);
+        return `<span class="line-number${hasBreakpoint ? ' breakpoint' : ''}" data-line="${lineNum}">${lineNum}</span>`;
+    });
+    lineNumbers.innerHTML = lines.join('<br>');
+}
+
+/**
+ * Toggle breakpoint on a line (card number in hopper)
+ */
+export function toggleBreakpoint(lineNum) {
+    if (breakpoints.has(lineNum)) {
+        breakpoints.delete(lineNum);
+        showOutput('info', `● Breakpoint retiré - carte ${lineNum}`);
+    } else {
+        breakpoints.add(lineNum);
+        showOutput('info', `● Breakpoint ajouté - carte ${lineNum}`);
+    }
+    // Update both editor line numbers and card stack display
+    updateLineNumbers();
+    updateCardStack();
+}
+
+/**
+ * Clear all breakpoints
+ */
+export function clearBreakpoints() {
+    breakpoints.clear();
+    updateLineNumbers();
+}
+
+/**
+ * Check if line has a breakpoint
+ */
+export function hasBreakpoint(lineNum) {
+    return breakpoints.has(lineNum);
 }
 
 /**
@@ -462,16 +513,21 @@ export function compileOnly() {
         // Use full source code (with comments) for compilation
         const code = sourceCode;
 
+        // Clear output buffer for printer
+        programOutputBuffer = [];
+
         // Create runtime with terminal callbacks and dialect (will be used during execution)
         cobolRuntime = new CobolRuntime({
             dialect: currentDialect,
             onDisplay: (msg) => {
                 terminalOutput(msg);
                 showOutput('output', msg); // Also show in main console
+                programOutputBuffer.push(msg); // Store for printer
             },
             onDisplayWithOptions: (msg, options) => {
                 terminalOutputWithOptions(msg, options);
                 showOutput('output', msg); // Also show in main console
+                programOutputBuffer.push(msg); // Store for printer
             },
             onAccept: (varName) => {
                 // In screen mode, don't display "ACCEPT varName:" text on screen
@@ -619,6 +675,9 @@ export async function runProgram() {
         showOutput('error', 'Compilez le programme d\'abord');
         return;
     }
+
+    // Clear output buffer for fresh execution
+    programOutputBuffer = [];
 
     // Open terminal modal
     openTerminal();
@@ -1033,13 +1092,18 @@ export function updateCardStack() {
         return;
     }
 
-    stack.innerHTML = cards.map((card, index) => `
-        <div class="card-mini${index === currentCardIndex ? ' active' : ''}"
-             onclick="window.editorModule.showCard(${index})">
-            <span class="seq-num">${card.seq}</span>
-            <span class="card-text">${card.original.trim().substring(0, 50)}</span>
+    stack.innerHTML = cards.map((card, index) => {
+        const lineNum = index + 1;  // Line numbers are 1-based
+        const hasBreakpoint = breakpoints.has(lineNum);
+        const isActive = index === currentCardIndex;
+        return `
+        <div class="card-mini${isActive ? ' active' : ''}${hasBreakpoint ? ' breakpoint' : ''}"
+             data-line="${lineNum}">
+            <span class="card-breakpoint" onclick="event.stopPropagation(); window.editorModule.toggleBreakpoint(${lineNum})" title="Cliquez pour ajouter/retirer un breakpoint">●</span>
+            <span class="seq-num" onclick="window.editorModule.showCard(${index})">${card.seq}</span>
+            <span class="card-text" onclick="window.editorModule.showCard(${index})">${card.original.trim().substring(0, 50)}</span>
         </div>
-    `).join('');
+    `}).join('');
 }
 
 /**
@@ -1783,7 +1847,8 @@ export async function startDebugMode() {
     if (btnStep) btnStep.classList.add('active');
     if (btnStopDebug) btnStopDebug.classList.remove('hidden');
     if (stepIndicator) stepIndicator.classList.remove('hidden');
-    if (debugPanel) debugPanel.classList.remove('hidden');
+    if (debugPanel) debugPanel.classList.add('active');
+    document.body.classList.add('debug-active');
 
     showOutput('system', '═══════════════════════════════════════');
     showOutput('info', '⏯ MODE DEBUG ACTIVÉ');
@@ -1798,15 +1863,17 @@ export async function startDebugMode() {
     const consoleInputArea = document.getElementById('consoleInputArea');
     if (consoleInputArea) consoleInputArea.style.display = 'flex';
 
-    // Get interpreter and enable step mode
-    debugInterpreter = cobolRuntime.getInterpreter();
-    if (debugInterpreter) {
-        debugInterpreter.setStepMode(true);
-    }
-
-    // Start execution (will pause at first statement)
+    // Start execution with step mode enabled
     try {
-        await cobolRuntime.run();
+        await cobolRuntime.run({
+            stepMode: true,
+            onStep: handleDebugStep,
+            onInterpreterReady: (interpreter) => {
+                debugInterpreter = interpreter;
+                // Pass breakpoints to interpreter
+                debugInterpreter.setBreakpoints(breakpoints);
+            }
+        });
         // Execution completed
         endDebugMode('completed');
     } catch (error) {
@@ -1829,6 +1896,9 @@ function handleDebugStep(stepInfo) {
     const debugStmt = document.getElementById('debugStmt');
     const debugVariables = document.getElementById('debugVariables');
     const debugExplanation = document.getElementById('debugExplanation');
+
+    // Highlight current line in editor
+    highlightCurrentLine(stepInfo.line);
 
     // Update current statement info
     if (debugLine) {
@@ -1857,6 +1927,26 @@ function handleDebugStep(stepInfo) {
     // Show explanation tip in console
     if (explanation && explanation.tip) {
         showOutput('info', `   💡 ${explanation.tip}`);
+    }
+}
+
+/**
+ * Highlight the current line in the editor during debug
+ */
+function highlightCurrentLine(lineNum) {
+    // Remove previous current line highlight
+    document.querySelectorAll('.line-number.current').forEach(el => {
+        el.classList.remove('current');
+    });
+
+    // Add current highlight
+    if (lineNum) {
+        const lineSpan = document.querySelector(`.line-number[data-line="${lineNum}"]`);
+        if (lineSpan) {
+            lineSpan.classList.add('current');
+            // Scroll line into view if needed
+            lineSpan.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
     }
 }
 
@@ -1946,6 +2036,21 @@ export function debugStepNext() {
 }
 
 /**
+ * Continue execution until next breakpoint
+ */
+export function debugRunToBreakpoint() {
+    if (!debugMode || !debugInterpreter) return;
+
+    if (breakpoints.size === 0) {
+        showOutput('warning', '⚠ Aucun breakpoint défini. Cliquez sur un numéro de ligne pour en ajouter.');
+        return;
+    }
+
+    showOutput('info', '▶ Exécution jusqu\'au prochain breakpoint...');
+    debugInterpreter.continueToBreakpoint();
+}
+
+/**
  * Continue execution without stepping (disable step mode)
  */
 export function debugContinue() {
@@ -1958,7 +2063,8 @@ export function debugContinue() {
 
     // Hide debug panel but keep terminal open
     const debugPanel = document.getElementById('debugPanel');
-    if (debugPanel) debugPanel.classList.add('hidden');
+    if (debugPanel) debugPanel.classList.remove('active');
+    document.body.classList.remove('debug-active');
 
     setStatus('running', 'EXÉCUTION');
 }
@@ -1997,7 +2103,13 @@ function endDebugMode(reason) {
     if (btnStep) btnStep.classList.remove('active');
     if (btnStopDebug) btnStopDebug.classList.add('hidden');
     if (stepIndicator) stepIndicator.classList.add('hidden');
-    if (debugPanel) debugPanel.classList.add('hidden');
+    if (debugPanel) debugPanel.classList.remove('active');
+    document.body.classList.remove('debug-active');
+
+    // Clear current line highlight
+    document.querySelectorAll('.line-number.current').forEach(el => {
+        el.classList.remove('current');
+    });
 
     // Reset console input
     if (consoleInput) {
@@ -2037,6 +2149,68 @@ function endDebugMode(reason) {
  */
 export function isDebugMode() {
     return debugMode;
+}
+
+/**
+ * Toggle debug panel collapsed state
+ */
+export function toggleDebugCollapse() {
+    const debugPanel = document.getElementById('debugPanel');
+    if (debugPanel) {
+        debugPanel.classList.toggle('collapsed');
+        // Update layout height
+        updateDebugLayoutHeight();
+    }
+}
+
+/**
+ * Update layout height based on debug panel state
+ */
+function updateDebugLayoutHeight() {
+    const debugPanel = document.getElementById('debugPanel');
+    const layout = document.querySelector('.editor-layout-new');
+    if (!debugPanel || !layout) return;
+
+    if (debugPanel.classList.contains('collapsed')) {
+        layout.style.height = 'calc(100vh - 160px)';
+    } else {
+        layout.style.height = '';  // Reset to CSS default
+    }
+}
+
+/**
+ * Initialize debug panel resizer
+ */
+export function initDebugResizer() {
+    const resizer = document.getElementById('debugResizer');
+    const debugPanel = document.getElementById('debugPanel');
+    const debugContent = document.getElementById('debugContent');
+
+    if (!resizer || !debugPanel || !debugContent) return;
+
+    let startY, startHeight;
+
+    resizer.addEventListener('mousedown', (e) => {
+        startY = e.clientY;
+        startHeight = debugContent.offsetHeight;
+        resizer.classList.add('dragging');
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+        e.preventDefault();
+    });
+
+    function onMouseMove(e) {
+        const deltaY = startY - e.clientY;
+        const newHeight = Math.max(50, Math.min(400, startHeight + deltaY));
+        debugContent.style.maxHeight = newHeight + 'px';
+    }
+
+    function onMouseUp() {
+        resizer.classList.remove('dragging');
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+    }
 }
 
 /**

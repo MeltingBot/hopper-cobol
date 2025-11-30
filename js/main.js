@@ -43,6 +43,8 @@ window.startDebugMode = editor.startDebugMode;
 window.stopDebugMode = editor.stopDebugMode;
 window.debugStepNext = editor.debugStepNext;
 window.debugContinue = editor.debugContinue;
+window.debugRunToBreakpoint = editor.debugRunToBreakpoint;
+window.toggleDebugCollapse = editor.toggleDebugCollapse;
 
 // Printer function
 window.printOutput = editor.printOutput;
@@ -157,6 +159,7 @@ function init() {
     mainframeBoot();
 
     editor.initEditor();
+    editor.initDebugResizer();
     dataManager.initDataManager();
     tutorial.initTutorial();
     initResizers();

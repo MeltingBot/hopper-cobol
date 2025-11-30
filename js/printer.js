@@ -99,6 +99,9 @@ export function endPrintJob(title = 'IMPRESSION COBOL') {
     displayPrinterOutput(title);
 }
 
+// Print animation state
+let isPrinting = false;
+
 /**
  * Display the printer output in a modal window
  * @param {string} title - Document title
@@ -112,6 +115,7 @@ function displayPrinterOutput(title) {
 
     const content = document.getElementById('printerContent');
     const pageInfo = document.getElementById('printerPageInfo');
+    const statusEl = document.getElementById('printerStatus');
 
     // Generate the paper content
     const paperHTML = generatePaperHTML(title);
@@ -119,13 +123,101 @@ function displayPrinterOutput(title) {
 
     // Update page info
     const totalPages = currentPage;
-    pageInfo.textContent = `${printBuffer.filter(b => b.type === 'line').length} lignes - ${totalPages} page(s)`;
+    const lineCount = printBuffer.filter(b => b.type === 'line').length;
+    pageInfo.textContent = `${lineCount} lignes - ${totalPages} page(s)`;
 
     // Show the modal
     modal.classList.remove('hidden');
 
-    // Play print sound effect (optional)
-    playPrintSound();
+    // Start printing animation
+    animatePrinting(content, statusEl, lineCount);
+}
+
+/**
+ * Animate the printing process line by line
+ * @param {HTMLElement} content - The printer content container
+ * @param {HTMLElement} statusEl - The status indicator element
+ * @param {number} totalLines - Total number of lines to print
+ */
+function animatePrinting(content, statusEl, totalLines) {
+    const lines = content.querySelectorAll('.print-line');
+    const paperContainer = document.getElementById('printerContent');
+
+    if (lines.length === 0) return;
+
+    isPrinting = true;
+
+    // Update status to printing
+    if (statusEl) {
+        statusEl.classList.remove('idle');
+        statusEl.classList.add('printing');
+        statusEl.querySelector('.printer-status-text').textContent = 'IMPRESSION...';
+    }
+
+    let currentLineIndex = 0;
+
+    // Calculate speed: faster for more lines (15ms to 40ms per line)
+    const baseSpeed = Math.max(15, Math.min(40, 800 / totalLines));
+
+    function printNextLine() {
+        if (currentLineIndex >= lines.length || !isPrinting) {
+            // Printing complete
+            finishPrinting(statusEl);
+            return;
+        }
+
+        const line = lines[currentLineIndex];
+
+        // Remove printing class from previous line
+        if (currentLineIndex > 0) {
+            lines[currentLineIndex - 1].classList.remove('printing');
+            lines[currentLineIndex - 1].classList.add('printed');
+        }
+
+        // Add printing class to current line
+        line.classList.add('printing');
+
+        // Auto-scroll to keep current line visible
+        if (paperContainer) {
+            const lineRect = line.getBoundingClientRect();
+            const containerRect = paperContainer.getBoundingClientRect();
+            if (lineRect.bottom > containerRect.bottom - 50) {
+                line.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        currentLineIndex++;
+
+        // Variable speed: slightly random for realism
+        const variance = Math.random() * 10 - 5;
+        setTimeout(printNextLine, baseSpeed + variance);
+    }
+
+    // Start printing after a brief delay (paper loading)
+    setTimeout(printNextLine, 200);
+}
+
+/**
+ * Finish the printing animation
+ * @param {HTMLElement} statusEl - Status indicator element
+ */
+function finishPrinting(statusEl) {
+    isPrinting = false;
+
+    // Mark all lines as printed
+    const lines = document.querySelectorAll('.print-line.printing');
+    lines.forEach(line => {
+        line.classList.remove('printing');
+        line.classList.add('printed');
+    });
+
+    // Update status
+    if (statusEl) {
+        statusEl.classList.remove('printing');
+        statusEl.classList.add('idle');
+        statusEl.querySelector('.printer-status-text').textContent = 'PRÊT';
+    }
+
 }
 
 /**
@@ -230,12 +322,16 @@ function createPrinterModal() {
                     <span class="printer-icon">🖨️</span>
                     <span>IMPRIMANTE DOT-MATRIX</span>
                 </div>
+                <div class="printer-status idle" id="printerStatus">
+                    <div class="printer-status-light"></div>
+                    <span class="printer-status-text">PRÊT</span>
+                </div>
                 <div class="printer-info">
                     <span id="printerPageInfo">0 lignes</span>
                 </div>
                 <div class="printer-controls">
                     <button class="printer-btn" onclick="window.printPrinterOutput()">🖨️ Imprimer</button>
-                    <button class="printer-btn" onclick="window.downloadPrinterOutput()">💾 Télécharger</button>
+                    <button class="printer-btn" onclick="window.downloadPrinterOutput()">💾 Sauver</button>
                     <button class="printer-btn close" onclick="window.closePrinterModal()">✕ Fermer</button>
                 </div>
             </div>
@@ -250,6 +346,7 @@ function createPrinterModal() {
 
     // Add global functions for button handlers
     window.closePrinterModal = () => {
+        isPrinting = false; // Stop any ongoing animation
         modal.classList.add('hidden');
     };
 
@@ -327,33 +424,10 @@ function escapeHtml(text) {
 }
 
 /**
- * Play a simulated print sound
+ * Stop printing animation (used when closing modal during print)
  */
-function playPrintSound() {
-    // Create audio context for retro printer sound
-    try {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-        // Simulate dot matrix printer noise
-        const duration = 0.5;
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-
-        oscillator.type = 'square';
-        oscillator.frequency.setValueAtTime(200, audioContext.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(50, audioContext.currentTime + duration);
-
-        gainNode.gain.setValueAtTime(0.05, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
-
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + duration);
-    } catch (e) {
-        // Audio not supported, silently ignore
-    }
+export function stopPrinting() {
+    isPrinting = false;
 }
 
 /**
@@ -392,6 +466,7 @@ export function printCompilationOutput(programId, outputs) {
  * Close the printer modal
  */
 export function closePrinter() {
+    isPrinting = false;
     const modal = document.getElementById('printerModal');
     if (modal) {
         modal.classList.add('hidden');
@@ -405,5 +480,6 @@ export default {
     formFeed,
     endPrintJob,
     printCompilationOutput,
-    closePrinter
+    closePrinter,
+    stopPrinting
 };

@@ -160,14 +160,16 @@
             <span class="reference-sep">│</span>
             <span id="stepModeIndicator" class="step-indicator hidden">⏯ MODE DEBUG</span>
         </div>
-        <!-- Debug Panel with Variables and Explanations (hidden by default) -->
-        <div class="debug-panel hidden" id="debugPanel">
+        <!-- Debug Panel with Variables and Explanations (hidden by default via CSS) -->
+        <div class="debug-panel" id="debugPanel">
+            <div class="debug-resizer" id="debugResizer"></div>
             <div class="debug-header">
                 <span class="debug-title">🎓 Mode Pédagogique</span>
                 <span class="debug-line" id="debugLine">Ligne: -</span>
                 <span class="debug-stmt" id="debugStmt">-</span>
+                <button class="debug-collapse-btn" onclick="toggleDebugCollapse()" id="btnDebugCollapse" title="Réduire/Agrandir">▼</button>
             </div>
-            <div class="debug-content">
+            <div class="debug-content" id="debugContent">
                 <div class="debug-explanation" id="debugExplanation">
                     <div class="debug-explanation-placeholder">
                         Cliquez "Suivant" pour exécuter la première instruction
@@ -180,6 +182,7 @@
             </div>
             <div class="debug-controls">
                 <button class="debug-btn" onclick="debugStepNext()" id="btnDebugNext">► Suivant</button>
+                <button class="debug-btn" onclick="debugRunToBreakpoint()" id="btnDebugBreakpoint" title="Exécuter jusqu'au prochain breakpoint (cliquez sur un n° de ligne pour ajouter)">▶● Breakpoint</button>
                 <button class="debug-btn" onclick="debugContinue()" id="btnDebugContinue">▶▶ Continuer</button>
                 <button class="debug-btn danger" onclick="stopDebugMode()">■ Arrêter</button>
             </div>
@@ -318,6 +321,7 @@
                 <button class="terminal-send" onclick="submitTerminalInput()">ENTER</button>
             </div>
             <div class="terminal-footer">
+                <button class="btn btn-print btn-small" onclick="printOutput()" title="Imprimer la sortie">🖨️ IMPRIMER</button>
                 <button class="btn btn-danger btn-small" onclick="closeTerminal()">DÉCONNEXION</button>
             </div>
         </div>

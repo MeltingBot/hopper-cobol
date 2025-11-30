@@ -13,27 +13,36 @@ const { CONDITION_NAME } = NodeType;
  * PIC clause parser - extracts type and length from PIC strings
  */
 function parsePic(picString) {
-    if (!picString) return { type: 'alphanumeric', length: 1, decimals: 0, signed: false };
+    if (!picString) return { type: 'alphanumeric', length: 1, decimals: 0, signed: false, edited: false, editMask: '' };
 
     const pic = picString.toUpperCase();
     let type = 'alphanumeric';
     let length = 0;
     let decimals = 0;
     let signed = false;
+    let edited = false;
 
     // Check for sign
     if (pic.includes('S')) {
         signed = true;
     }
 
+    // Check for edited picture (Z, *, comma, period in numeric context)
+    if (pic.includes('Z') || pic.includes('*') ||
+        (pic.includes(',') && (pic.includes('9') || pic.includes('Z'))) ||
+        (pic.includes('.') && (pic.includes('9') || pic.includes('Z')))) {
+        edited = true;
+    }
+
     // Check for type
-    if (pic.includes('9') || pic.includes('V') || pic.includes('Z')) {
+    if (pic.includes('9') || pic.includes('V') || pic.includes('Z') || pic.includes('*')) {
         type = 'numeric';
     } else if (pic.includes('A')) {
         type = 'alphabetic';
     }
 
-    // Calculate length
+    // Build expanded edit mask and calculate length
+    let editMask = '';
     let i = 0;
     let inDecimal = false;
 
@@ -55,27 +64,43 @@ function parsePic(picString) {
                 i++;
             }
             const count = parseInt(numStr) || 1;
-            if (inDecimal) {
-                decimals += count;
+            // Get the character before the parenthesis
+            const prevChar = editMask.length > 0 ? editMask[editMask.length - 1] : '';
+            // Add count-1 more of that character (one was already added)
+            for (let j = 1; j < count; j++) {
+                editMask += prevChar;
+                if (inDecimal && '9Z*'.includes(prevChar)) {
+                    decimals++;
+                }
+                if ('X9AZ*'.includes(prevChar)) {
+                    length++;
+                }
             }
-            length += count;
             i++;
             continue;
         }
 
         if ('X9AVSZ*+-.,'.includes(char)) {
+            editMask += char;
             if (inDecimal && '9Z*'.includes(char)) {
                 decimals++;
             }
             if ('X9AZ*'.includes(char)) {
                 length++;
             }
+            // Comma and period add to display length for edited pictures
+            if (edited && (char === ',' || char === '.')) {
+                length++;
+            }
+        } else if (char !== 'S') {
+            // Other characters (like spaces in edit masks)
+            editMask += char;
         }
 
         i++;
     }
 
-    return { type, length: length || 1, decimals, signed };
+    return { type, length: length || 1, decimals, signed, edited, editMask };
 }
 
 /**
@@ -119,6 +144,8 @@ class Variable {
         this.children = [];
         this.parent = null;
         this.redefines = definition.redefines;
+        this.redefinesVar = null; // Will be set to point to the redefined variable
+        this.occursCount = definition.occurs || null; // Store OCCURS count for subscript handling
     }
 
     getInitialValue() {
@@ -135,6 +162,12 @@ class Variable {
             }
             if (this.initialValue.type === 'figurative') {
                 return this.getFigurativeValue(this.initialValue.value);
+            }
+            if (this.initialValue.type === 'all') {
+                // ALL "x" - repeat the character/string to fill the field
+                const pattern = this.initialValue.value;
+                const repeats = Math.ceil(this.picInfo.length / pattern.length);
+                return pattern.repeat(repeats).substring(0, this.picInfo.length);
             }
         }
 
@@ -163,11 +196,62 @@ class Variable {
     }
 
     getValue() {
+        // Check if this variable or any ancestor has REDEFINES
+        const redefinesRoot = this.findRedefinesRoot();
+        if (redefinesRoot) {
+            // Get the base storage from the redefined variable
+            const baseValue = redefinesRoot.redefinesVar.getValue();
+            // Calculate our offset within the base storage
+            const offset = this.calculateOffsetFrom(redefinesRoot);
+            // Return our portion of the base storage
+            if (this.children.length > 0) {
+                return baseValue.substring(offset, offset + this.getTotalLength());
+            }
+            return baseValue.substring(offset, offset + this.picInfo.length);
+        }
+
         if (this.children.length > 0) {
             // Group item - concatenate children values
             return this.children.map(c => c.getValue()).join('');
         }
         return this.value;
+    }
+
+    /**
+     * Find the root ancestor that has REDEFINES
+     */
+    findRedefinesRoot() {
+        if (this.redefinesVar) return this;
+        if (this.parent) return this.parent.findRedefinesRoot();
+        return null;
+    }
+
+    /**
+     * Calculate offset of this variable from a given ancestor
+     */
+    calculateOffsetFrom(ancestor) {
+        if (this === ancestor) return 0;
+        if (!this.parent) return 0;
+
+        // Find our position within parent's children
+        let offset = 0;
+        for (const sibling of this.parent.children) {
+            if (sibling === this) break;
+            offset += sibling.getTotalLength();
+        }
+
+        // Add parent's offset
+        return offset + this.parent.calculateOffsetFrom(ancestor);
+    }
+
+    /**
+     * Get total length of this variable (including all children)
+     */
+    getTotalLength() {
+        if (this.children.length > 0) {
+            return this.children.reduce((sum, c) => sum + c.getTotalLength(), 0);
+        }
+        return this.picInfo.length;
     }
 
     getNumericValue() {
@@ -186,9 +270,20 @@ class Variable {
 
     /**
      * Get value formatted for display (with decimal point if needed)
+     * Applies COBOL edited picture formatting (Z, *, comma, period)
      */
     getDisplayValue() {
+        // For group items, concatenate display values of children
+        if (this.children.length > 0) {
+            return this.children.map(c => c.getDisplayValue()).join('');
+        }
+
         if (this.picInfo.type === 'numeric') {
+            // For edited pictures, apply the edit mask
+            if (this.picInfo.edited) {
+                return this.applyEditMask();
+            }
+
             const val = this.getValue().trim();
             let displayVal;
             if (this.picInfo.decimals > 0) {
@@ -205,6 +300,91 @@ class Variable {
             return displayVal;
         }
         return this.getValue();
+    }
+
+    /**
+     * Apply COBOL edit mask to format numeric value for display
+     * Handles Z (zero suppress), * (check protect), comma, period
+     */
+    applyEditMask() {
+        const mask = this.picInfo.editMask;
+        const rawValue = this.getValue().trim();
+
+        // Get numeric value and handle decimals
+        let numValue = parseInt(rawValue) || 0;
+
+        // Count digit positions in mask (9, Z, *)
+        const digitPositions = [];
+        const insertPositions = []; // positions of , and .
+
+        for (let i = 0; i < mask.length; i++) {
+            const c = mask[i];
+            if ('9Z*'.includes(c)) {
+                digitPositions.push({ pos: i, type: c });
+            } else if (c === ',' || c === '.') {
+                insertPositions.push({ pos: i, char: c });
+            }
+        }
+
+        // Convert number to string with proper padding
+        const numStr = String(Math.abs(numValue)).padStart(digitPositions.length, '0');
+
+        // Build result by applying mask
+        let result = '';
+        let digitIndex = 0;
+        let inSignificant = false; // Have we seen a non-zero digit?
+
+        for (let i = 0; i < mask.length; i++) {
+            const maskChar = mask[i];
+
+            if (maskChar === '9') {
+                // Always show digit
+                result += numStr[digitIndex] || '0';
+                if (numStr[digitIndex] !== '0') inSignificant = true;
+                digitIndex++;
+            } else if (maskChar === 'Z') {
+                // Zero suppress - show space if leading zero
+                const digit = numStr[digitIndex] || '0';
+                if (digit === '0' && !inSignificant) {
+                    result += ' ';
+                } else {
+                    result += digit;
+                    inSignificant = true;
+                }
+                digitIndex++;
+            } else if (maskChar === '*') {
+                // Check protect - show * if leading zero
+                const digit = numStr[digitIndex] || '0';
+                if (digit === '0' && !inSignificant) {
+                    result += '*';
+                } else {
+                    result += digit;
+                    inSignificant = true;
+                }
+                digitIndex++;
+            } else if (maskChar === ',') {
+                // Comma insertion - show comma only if we have significant digits
+                if (inSignificant) {
+                    result += ',';
+                } else {
+                    result += ' ';
+                }
+            } else if (maskChar === '.') {
+                // Decimal point - always show (marks transition to decimals)
+                result += '.';
+                inSignificant = true; // Digits after decimal point always shown
+            } else {
+                // Other characters (space, etc.) - keep as-is
+                result += maskChar;
+            }
+        }
+
+        // Handle sign for negative values
+        if (this.picInfo.signed && this.sign < 0) {
+            result = '-' + result.trimStart();
+        }
+
+        return result;
     }
 
     setValue(value) {
@@ -1041,6 +1221,13 @@ export class Interpreter {
     }
 
     /**
+     * Set breakpoints (line numbers where we should stop)
+     */
+    setBreakpoints(breakpointSet) {
+        this.breakpoints = breakpointSet || new Set();
+    }
+
+    /**
      * Continue to next step (when paused)
      */
     stepNext() {
@@ -1048,6 +1235,14 @@ export class Interpreter {
             this.stepResolve();
             this.stepResolve = null;
         }
+    }
+
+    /**
+     * Continue execution until next breakpoint
+     */
+    continueToBreakpoint() {
+        this.runToBreakpoint = true;
+        this.stepNext();
     }
 
     /**
@@ -1072,6 +1267,28 @@ export class Interpreter {
         if (!this.stepMode || this.halted) return;
 
         this.currentStatement = stmt;
+
+        // If running to breakpoint, check if we hit one
+        if (this.runToBreakpoint) {
+            const lineNum = stmt.line;
+            if (this.breakpoints && this.breakpoints.has(lineNum)) {
+                // Hit a breakpoint - stop running
+                this.runToBreakpoint = false;
+            } else {
+                // Continue without stopping - just notify and move on
+                if (this.onStep) {
+                    this.onStep({
+                        statement: stmt,
+                        line: stmt.line,
+                        type: stmt.type,
+                        variables: this.getVariablesState(),
+                        isRunning: true  // Indicate we're not pausing
+                    });
+                }
+                return;
+            }
+        }
+
         this.paused = true;
 
         // Notify UI of current statement
@@ -1121,7 +1338,7 @@ export class Interpreter {
             let lastDataItem = null;  // Track last non-88 item for condition names
 
             for (const item of items) {
-                if (!item.name || item.name === 'FILLER') continue;
+                if (!item.name) continue;
 
                 // Handle 88 level condition names
                 if (item.type === NodeType.CONDITION_NAME || item.level === 88) {
@@ -1139,7 +1356,11 @@ export class Interpreter {
                 }
 
                 const variable = new Variable(item);
-                lastDataItem = item;  // Track for 88 level attachment
+                const isFiller = item.name === 'FILLER';
+
+                if (!isFiller) {
+                    lastDataItem = item;  // Track for 88 level attachment
+                }
 
                 // Handle hierarchy based on level numbers
                 while (stack.length > 0 && stack[stack.length - 1].level >= item.level) {
@@ -1151,8 +1372,15 @@ export class Interpreter {
                     stack[stack.length - 1].children.push(variable);
                 }
 
-                this.runtime.variables.set(this.runtime.normalizeVarName(item.name), variable);
-                stack.push(variable);
+                // Only add named variables (not FILLER) to the symbol table
+                if (!isFiller) {
+                    this.runtime.variables.set(this.runtime.normalizeVarName(item.name), variable);
+                }
+
+                // FILLER can't have children, so only push named items to stack
+                if (!isFiller) {
+                    stack.push(variable);
+                }
 
                 // Recursively process children (for FD records with nested fields)
                 if (item.children && item.children.length > 0) {
@@ -1168,6 +1396,17 @@ export class Interpreter {
         if (dataDivision.fileSection) {
             for (const fd of dataDivision.fileSection) {
                 processItems(fd.records);
+            }
+        }
+
+        // Link REDEFINES variables to their targets
+        for (const [name, variable] of this.runtime.variables) {
+            if (variable.redefines) {
+                const targetName = this.runtime.normalizeVarName(variable.redefines);
+                const targetVar = this.runtime.variables.get(targetName);
+                if (targetVar) {
+                    variable.redefinesVar = targetVar;
+                }
             }
         }
     }
@@ -2392,37 +2631,113 @@ export class Interpreter {
     evaluateSubscript(expr) {
         // Get subscript values
         const subscripts = expr.subscripts.map(s => this.evaluateNumeric(s));
-
-        // For now, handle single-dimension tables
-        // The subscripted variable name would be TABLE(1), TABLE(2), etc.
-        // We need to find the corresponding element in the table
-
-        // Simple approach: look for variable with subscript suffix
-        // In real COBOL, tables are contiguous memory - we simulate with naming
         const baseName = expr.name;
         const subscript = subscripts[0] || 1;
 
-        // Try to find the subscripted element
-        // First check if there's a variable with this exact subscripted name
-        const subscriptedName = `${baseName}(${subscript})`;
-        let value = this.runtime.getValue(subscriptedName);
-        if (value !== null) {
-            return value;
-        }
-
-        // Otherwise, try to access as an array element
-        // Get the base variable and calculate offset based on child structure
+        // Get the base variable
         const baseVar = this.runtime.getVariable(baseName);
-        if (baseVar && baseVar.occurs) {
-            // For OCCURS, we need to access the nth occurrence
-            // This is a simplified implementation
-            const fullValue = baseVar.getValue();
-            const elementSize = baseVar.picInfo?.length || 1;
-            const startPos = (subscript - 1) * elementSize;
-            return fullValue.substring(startPos, startPos + elementSize);
+        if (!baseVar) {
+            return '';
         }
 
-        return this.runtime.getValue(baseName) || '';
+        // Find the parent that has OCCURS (could be this variable or an ancestor)
+        const occursParent = this.findOccursParent(baseVar);
+        if (!occursParent) {
+            // No OCCURS found - just return the value
+            return baseVar.getValue();
+        }
+
+        // Calculate element size (size of one occurrence)
+        const elementSize = occursParent.getTotalLength();
+
+        // Get the root storage (considering REDEFINES)
+        const redefinesRoot = occursParent.findRedefinesRoot();
+        let fullStorage;
+        if (redefinesRoot) {
+            fullStorage = redefinesRoot.redefinesVar.getValue();
+        } else {
+            // Get storage from the OCCURS parent's own parent
+            if (occursParent.parent) {
+                fullStorage = occursParent.parent.getValue();
+            } else {
+                fullStorage = occursParent.getValue();
+            }
+        }
+
+        // Calculate offset for the subscript (1-based to 0-based)
+        const occursOffset = (subscript - 1) * elementSize;
+
+        // If we're accessing a child of the OCCURS item, calculate additional offset
+        if (baseVar !== occursParent) {
+            // Calculate offset of baseVar within one occurrence
+            const childOffset = this.calculateChildOffset(baseVar, occursParent);
+            const totalOffset = occursOffset + childOffset;
+            const len = baseVar.getTotalLength();
+            return fullStorage.substring(totalOffset, totalOffset + len);
+        }
+
+        // Return the full occurrence
+        return fullStorage.substring(occursOffset, occursOffset + elementSize);
+    }
+
+    /**
+     * Find the parent variable that has OCCURS
+     */
+    findOccursParent(variable) {
+        // Check the variable's parent chain for OCCURS
+        let current = variable.parent;
+        while (current) {
+            // Check if any child of current is marked with occurs (based on AST)
+            // For now, we detect OCCURS by looking at parent structure
+            if (current.children.length > 0) {
+                // If all siblings have same structure and parent has multiple identical children
+                // it's likely an OCCURS - but we need the actual occurs property
+                // Let's check if the variable was defined with occurs
+                if (current.occursCount) {
+                    return current;
+                }
+            }
+            current = current.parent;
+        }
+
+        // Also check the variable itself
+        if (variable.occursCount) {
+            return variable;
+        }
+
+        // Fallback: check if parent has identical children (heuristic for OCCURS)
+        if (variable.parent && variable.parent.children.length > 1) {
+            const firstChild = variable.parent.children[0];
+            const allSame = variable.parent.children.every(c =>
+                c.name === firstChild.name && c.getTotalLength() === firstChild.getTotalLength()
+            );
+            if (allSame && firstChild.name === variable.name) {
+                return variable;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Calculate offset of a child variable within its OCCURS parent
+     */
+    calculateChildOffset(child, occursParent) {
+        if (child === occursParent) return 0;
+
+        let offset = 0;
+        let current = child;
+
+        while (current && current.parent && current !== occursParent) {
+            // Find position in parent's children
+            for (const sibling of current.parent.children) {
+                if (sibling === current) break;
+                offset += sibling.getTotalLength();
+            }
+            current = current.parent;
+        }
+
+        return offset;
     }
 
     /**
