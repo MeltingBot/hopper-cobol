@@ -60,6 +60,9 @@ export const NodeType = {
     INSPECT: 'INSPECT',
     SEARCH: 'SEARCH',
     SET: 'SET',
+    CALL: 'CALL',
+    CANCEL: 'CANCEL',
+    COPY: 'COPY',
 
     // Expressions
     SUBSCRIPT: 'SUBSCRIPT',
@@ -831,7 +834,7 @@ export class Parser {
             TokenType.REWRITE, TokenType.DELETE, TokenType.START, TokenType.CONTINUE,
             TokenType.SORT, TokenType.MERGE, TokenType.RELEASE, TokenType.RETURN,
             TokenType.STRING, TokenType.UNSTRING, TokenType.INSPECT,
-            TokenType.SEARCH, TokenType.SET
+            TokenType.SEARCH, TokenType.SET, TokenType.CALL, TokenType.CANCEL
         );
     }
 
@@ -871,6 +874,8 @@ export class Parser {
             case TokenType.INSPECT: return this.parseInspect();
             case TokenType.SEARCH: return this.parseSearch();
             case TokenType.SET: return this.parseSet();
+            case TokenType.CALL: return this.parseCall();
+            case TokenType.CANCEL: return this.parseCancel();
             case TokenType.CONTINUE:
                 this.advance();
                 this.skipPeriod();
@@ -2804,6 +2809,130 @@ export class Parser {
             this.expect(TokenType.BY);
             node.operation = 'DOWN';
             node.value = this.parseExpression();
+        }
+
+        this.skipPeriod();
+        return node;
+    }
+
+    /**
+     * Parse CALL statement
+     * CALL program-name [USING arg-1 arg-2 ...]
+     *      [ON EXCEPTION statements]
+     *      [NOT ON EXCEPTION statements]
+     *      [END-CALL]
+     */
+    parseCall() {
+        this.expect(TokenType.CALL);
+
+        const node = new ASTNode(NodeType.CALL, {
+            program: null,        // Program name (literal or identifier)
+            using: [],            // Array of {name, mode: 'REFERENCE'|'CONTENT'|'VALUE'}
+            onException: [],
+            notOnException: [],
+        });
+
+        // Program name (can be literal "SUBPROG" or identifier WS-PROG-NAME)
+        if (this.check(TokenType.STRING_LITERAL)) {
+            node.program = this.advance().value;
+        } else if (this.check(TokenType.IDENTIFIER)) {
+            node.program = this.advance().value;
+        }
+
+        // USING clause
+        if (this.check(TokenType.USING)) {
+            this.advance();
+
+            let currentMode = 'REFERENCE'; // Default mode
+
+            while (!this.checkAny(TokenType.ON, TokenType.NOT, TokenType.END_CALL,
+                                   TokenType.DOT, TokenType.EOF) &&
+                   !this.isStatementStart()) {
+                // Check for BY REFERENCE, BY CONTENT, BY VALUE
+                if (this.check(TokenType.BY)) {
+                    this.advance();
+                    if (this.check(TokenType.BY_REFERENCE)) {
+                        this.advance();
+                        currentMode = 'REFERENCE';
+                    } else if (this.check(TokenType.BY_CONTENT)) {
+                        this.advance();
+                        currentMode = 'CONTENT';
+                    } else if (this.check(TokenType.BY_VALUE)) {
+                        this.advance();
+                        currentMode = 'VALUE';
+                    }
+                }
+
+                // Get the argument
+                if (this.check(TokenType.IDENTIFIER)) {
+                    node.using.push({
+                        name: this.advance().value,
+                        mode: currentMode
+                    });
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // ON EXCEPTION / NOT ON EXCEPTION
+        while (!this.checkAny(TokenType.END_CALL, TokenType.DOT, TokenType.EOF)) {
+            if (this.check(TokenType.NOT)) {
+                this.advance();
+                this.optional(TokenType.ON);
+                // Skip 'EXCEPTION' as identifier
+                if (this.check(TokenType.IDENTIFIER) && this.current().value === 'EXCEPTION') {
+                    this.advance();
+                }
+                while (!this.checkAny(TokenType.END_CALL, TokenType.DOT, TokenType.EOF)) {
+                    if (this.isStatementStart()) {
+                        const stmt = this.parseStatement();
+                        if (stmt) node.notOnException.push(stmt);
+                    } else {
+                        break;
+                    }
+                }
+            } else if (this.check(TokenType.ON) ||
+                       (this.check(TokenType.IDENTIFIER) && this.current().value === 'EXCEPTION')) {
+                this.optional(TokenType.ON);
+                if (this.check(TokenType.IDENTIFIER) && this.current().value === 'EXCEPTION') {
+                    this.advance();
+                }
+                while (!this.checkAny(TokenType.NOT, TokenType.END_CALL, TokenType.DOT, TokenType.EOF)) {
+                    if (this.isStatementStart()) {
+                        const stmt = this.parseStatement();
+                        if (stmt) node.onException.push(stmt);
+                    } else {
+                        break;
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+
+        this.optional(TokenType.END_CALL);
+        this.skipPeriod();
+        return node;
+    }
+
+    /**
+     * Parse CANCEL statement
+     * CANCEL program-name-1 [program-name-2 ...]
+     */
+    parseCancel() {
+        this.expect(TokenType.CANCEL);
+
+        const node = new ASTNode(NodeType.CANCEL, {
+            programs: [],  // List of program names to cancel
+        });
+
+        while (this.checkAny(TokenType.STRING_LITERAL, TokenType.IDENTIFIER)) {
+            if (this.check(TokenType.STRING_LITERAL)) {
+                node.programs.push(this.advance().value);
+            } else {
+                node.programs.push(this.advance().value);
+            }
         }
 
         this.skipPeriod();

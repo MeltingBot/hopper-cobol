@@ -9,6 +9,8 @@ Complete reference of COBOL features supported by the HOPPER interpreter.
 - [String Manipulation](#string-manipulation-cobol-7485)
 - [File Operations](#file-operations)
 - [Table Handling](#table-handling)
+- [Subprograms](#subprograms-cobol-85)
+- [Copybooks](#copybooks-cobol-74)
 - [Screen Control](#screen-control-ibm-3270-extensions)
 - [Figurative Constants](#figurative-constants)
 - [Not Yet Implemented](#not-yet-implemented)
@@ -214,6 +216,79 @@ Complete reference of COBOL features supported by the HOPPER interpreter.
 
 ---
 
+## Subprograms (COBOL-85)
+
+| Statement | Syntax Example | Status |
+|-----------|----------------|--------|
+| CALL | `CALL "subprogram" USING arg1 arg2` | ✅ |
+| CALL BY REFERENCE | `CALL "sub" USING BY REFERENCE var` | ✅ |
+| CALL BY CONTENT | `CALL "sub" USING BY CONTENT var` | ✅ |
+| CALL BY VALUE | `CALL "sub" USING BY VALUE var` | ✅ |
+| ON EXCEPTION | `CALL ... ON EXCEPTION ... END-CALL` | ✅ |
+| NOT ON EXCEPTION | `CALL ... NOT ON EXCEPTION ... END-CALL` | ✅ |
+| CANCEL | `CANCEL "subprogram"` | ✅ |
+
+### CALL Examples
+
+```cobol
+      * Call internal paragraph as subprogram
+       CALL "CALCULATE-TAX" USING WS-AMOUNT WS-TAX.
+
+      * Call with exception handling
+       CALL "EXTERNAL-ROUTINE"
+           ON EXCEPTION
+               DISPLAY "Error: subprogram not found"
+           NOT ON EXCEPTION
+               DISPLAY "Call successful"
+       END-CALL.
+
+      * Different parameter passing modes
+       CALL "PROCESS" USING
+           BY REFERENCE WS-MODIFIABLE
+           BY CONTENT WS-READ-ONLY
+           BY VALUE WS-COPY
+       END-CALL.
+```
+
+---
+
+## Copybooks (COBOL-74)
+
+| Feature | Syntax Example | Status |
+|---------|----------------|--------|
+| COPY | `COPY copybook-name.` | ✅ |
+| COPY REPLACING | `COPY name REPLACING ==old== BY ==new==.` | ✅ |
+
+### Built-in Copybooks
+
+HOPPER includes several pre-registered copybooks:
+
+| Copybook | Contents |
+|----------|----------|
+| `DATE-VARS` | Date/time variables (WS-YEAR, WS-MONTH, WS-DAY, etc.) |
+| `SCREEN-CONTROL` | Screen positioning variables and attributes |
+| `ERROR-HANDLING` | Error code and message fields with 88-levels |
+| `FILE-STATUS` | File status codes with 88-level conditions |
+
+### COPY Examples
+
+```cobol
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+      * Include standard date variables
+       COPY DATE-VARS.
+      * Include file status with prefix replacement
+       COPY FILE-STATUS REPLACING ==WS-FS== BY ==CUST-FS==.
+
+       PROCEDURE DIVISION.
+           MOVE 2024 TO WS-YEAR.
+           MOVE 12 TO WS-MONTH.
+           MOVE 25 TO WS-DAY.
+           DISPLAY WS-YEAR "/" WS-MONTH "/" WS-DAY.
+```
+
+---
+
 ## Screen Control (IBM 3270 Extensions)
 
 HOPPER supports IBM 3270 style screen control for interactive terminal applications.
@@ -293,9 +368,6 @@ HOPPER supports IBM 3270 style screen control for interactive terminal applicati
 
 | Feature | Standard | Notes |
 |---------|----------|-------|
-| CALL / CANCEL | COBOL-85 | Subprogram calls |
-| COPY | COBOL-74 | Copybook inclusion |
-| COPY REPLACING | COBOL-85 | Copybook with substitution |
 | LINAGE | COBOL-74 | Print page control |
 | WRITE ADVANCING | COBOL-68 | Printer line control |
 | DECLARATIVES | COBOL-85 | Error handling procedures |

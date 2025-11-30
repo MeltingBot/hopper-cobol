@@ -1277,6 +1277,28 @@ export class Interpreter {
     }
 
     /**
+     * Execute a paragraph or section by name
+     * Used by CALL and PERFORM statements
+     */
+    async executeParagraphByName(name) {
+        const target = this.findParagraphOrSection(name);
+        if (!target) {
+            throw new Error(`Paragraphe ou section "${name}" non trouvé`);
+        }
+
+        // If it's a section, execute all its paragraphs
+        if (target.paragraphs) {
+            for (const para of target.paragraphs) {
+                await this.executeParagraph(para);
+                if (this.halted) return;
+            }
+        } else {
+            // It's a paragraph
+            await this.executeParagraph(target);
+        }
+    }
+
+    /**
      * Execute a statement
      */
     async executeStatement(stmt) {
@@ -1378,6 +1400,12 @@ export class Interpreter {
                 break;
             case NodeType.SET:
                 this.executeSet(stmt);
+                break;
+            case NodeType.CALL:
+                await this.executeCall(stmt);
+                break;
+            case NodeType.CANCEL:
+                this.executeCancel(stmt);
                 break;
         }
     }
@@ -3041,6 +3069,127 @@ export class Interpreter {
                     this.runtime.setVariable(target, currentDown - downValue);
                     break;
             }
+        }
+    }
+
+    /**
+     * Execute CALL statement
+     * Calls a subprogram (internal section/paragraph or external program)
+     */
+    async executeCall(stmt) {
+        const programName = stmt.program;
+        let exception = false;
+
+        try {
+            // First, try to find an internal section or paragraph with this name
+            const internalTarget = this.findParagraphOrSection(programName);
+
+            if (internalTarget) {
+                // Save current USING parameters for BY REFERENCE
+                const savedValues = {};
+                for (const arg of stmt.using) {
+                    if (arg.mode === 'REFERENCE' || arg.mode === 'CONTENT') {
+                        savedValues[arg.name] = this.runtime.getValue(arg.name);
+                    }
+                }
+
+                // Execute the internal section/paragraph
+                await this.executeParagraphByName(programName);
+
+                // BY CONTENT: restore original values (read-only)
+                for (const arg of stmt.using) {
+                    if (arg.mode === 'CONTENT') {
+                        this.runtime.setVariable(arg.name, savedValues[arg.name]);
+                    }
+                }
+            } else {
+                // Try external program from the subprogram library
+                const subprogram = this.runtime.getSubprogram?.(programName);
+
+                if (subprogram) {
+                    // Build argument list
+                    const args = {};
+                    for (const arg of stmt.using) {
+                        args[arg.name] = {
+                            value: this.runtime.getValue(arg.name),
+                            mode: arg.mode
+                        };
+                    }
+
+                    // Execute the subprogram
+                    const result = await subprogram.execute(args, this.runtime);
+
+                    // Update BY REFERENCE parameters from result
+                    if (result && result.outputs) {
+                        for (const [name, value] of Object.entries(result.outputs)) {
+                            const arg = stmt.using.find(a => a.name === name);
+                            if (arg && arg.mode === 'REFERENCE') {
+                                this.runtime.setVariable(name, value);
+                            }
+                        }
+                    }
+                } else {
+                    // Program not found - trigger exception
+                    exception = true;
+                    this.runtime.callbacks.onError?.(`CALL: Programme "${programName}" non trouvé`);
+                }
+            }
+        } catch (error) {
+            exception = true;
+            this.runtime.callbacks.onError?.(`CALL ${programName}: ${error.message}`);
+        }
+
+        // Handle ON EXCEPTION / NOT ON EXCEPTION
+        if (exception && stmt.onException.length > 0) {
+            for (const s of stmt.onException) {
+                await this.executeStatement(s);
+            }
+        } else if (!exception && stmt.notOnException.length > 0) {
+            for (const s of stmt.notOnException) {
+                await this.executeStatement(s);
+            }
+        }
+    }
+
+    /**
+     * Find a paragraph or section by name
+     */
+    findParagraphOrSection(name) {
+        const normalizedName = name.toUpperCase().replace(/-/g, '-');
+
+        // Check sections
+        for (const section of this.ast.procedure?.sections || []) {
+            if (section.name?.toUpperCase() === normalizedName) {
+                return section;
+            }
+            // Check paragraphs in section
+            for (const para of section.paragraphs || []) {
+                if (para.name?.toUpperCase() === normalizedName) {
+                    return para;
+                }
+            }
+        }
+
+        // Check top-level paragraphs
+        for (const para of this.ast.procedure?.paragraphs || []) {
+            if (para.name?.toUpperCase() === normalizedName) {
+                return para;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Execute CANCEL statement
+     * Releases resources associated with a subprogram
+     */
+    executeCancel(stmt) {
+        for (const programName of stmt.programs) {
+            // Notify runtime to release subprogram resources
+            this.runtime.cancelSubprogram?.(programName);
+            // In our simplified implementation, this is mostly a no-op
+            // but maintains COBOL compatibility
         }
     }
 }

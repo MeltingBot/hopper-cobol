@@ -9,6 +9,144 @@ import { Interpreter, interpret } from './interpreter.js';
 import { DialectManager, CobolDialect, DialectFeatures } from './dialects.js';
 
 /**
+ * Built-in Copybook Library
+ * Users can register their own copybooks here
+ */
+const CopybookLibrary = new Map();
+
+/**
+ * Preprocessor for COPY statements
+ * Expands COPY statements before lexical analysis
+ */
+class CopyPreprocessor {
+    constructor(copybooks = CopybookLibrary) {
+        this.copybooks = copybooks;
+        this.maxDepth = 10; // Prevent infinite recursion
+    }
+
+    /**
+     * Process source and expand all COPY statements
+     */
+    process(source, depth = 0) {
+        if (depth > this.maxDepth) {
+            throw new Error('COPY imbriqués trop profonds (max 10 niveaux)');
+        }
+
+        // Match COPY copybook-name [REPLACING old BY new ...].
+        const copyRegex = /^\s{6}\s+COPY\s+([A-Z0-9-]+)(?:\s+REPLACING\s+(.+?))?\s*\.\s*$/gmi;
+
+        return source.replace(copyRegex, (match, copybookName, replacingClause) => {
+            const normalizedName = copybookName.toUpperCase();
+            const copybook = this.copybooks.get(normalizedName);
+
+            if (!copybook) {
+                // Copybook not found - leave as comment for error reporting
+                return `      * COPY ${copybookName} - Copybook non trouvé`;
+            }
+
+            let expandedCode = copybook;
+
+            // Handle REPLACING clause
+            if (replacingClause) {
+                const replacements = this.parseReplacingClause(replacingClause);
+                for (const { from, to } of replacements) {
+                    // COBOL uses == == for pseudo-text or plain identifiers
+                    const fromPattern = from.replace(/==/g, '').trim();
+                    const toText = to.replace(/==/g, '').trim();
+                    expandedCode = expandedCode.split(fromPattern).join(toText);
+                }
+            }
+
+            // Recursively process nested COPY statements
+            expandedCode = this.process(expandedCode, depth + 1);
+
+            return `      * >>> COPY ${copybookName}\n${expandedCode}\n      * <<< FIN COPY ${copybookName}`;
+        });
+    }
+
+    /**
+     * Parse REPLACING clause
+     * Format: old-text BY new-text [old-text-2 BY new-text-2] ...
+     */
+    parseReplacingClause(clause) {
+        const replacements = [];
+        // Match patterns like: ==:PREFIX:== BY ==WS-== or FIELD-A BY FIELD-B
+        const pattern = /(==.+?==|[A-Z0-9-]+)\s+BY\s+(==.+?==|[A-Z0-9-]+)/gi;
+        let match;
+        while ((match = pattern.exec(clause)) !== null) {
+            replacements.push({ from: match[1], to: match[2] });
+        }
+        return replacements;
+    }
+}
+
+/**
+ * Register a copybook in the library
+ */
+export function registerCopybook(name, source) {
+    CopybookLibrary.set(name.toUpperCase(), source);
+}
+
+/**
+ * Get all registered copybooks
+ */
+export function getCopybooks() {
+    return new Map(CopybookLibrary);
+}
+
+/**
+ * Clear all copybooks
+ */
+export function clearCopybooks() {
+    CopybookLibrary.clear();
+}
+
+// Register some useful default copybooks
+registerCopybook('DATE-VARS', `
+       01 WS-DATE-VARS.
+          05 WS-CURRENT-DATE.
+             10 WS-YEAR         PIC 9(4).
+             10 WS-MONTH        PIC 9(2).
+             10 WS-DAY          PIC 9(2).
+          05 WS-CURRENT-TIME.
+             10 WS-HOUR         PIC 9(2).
+             10 WS-MINUTE       PIC 9(2).
+             10 WS-SECOND       PIC 9(2).
+          05 WS-DATE-FORMATTED  PIC X(10).
+`);
+
+registerCopybook('SCREEN-CONTROL', `
+       01 WS-SCREEN-CONTROL.
+          05 WS-SCREEN-LINE     PIC 9(2) VALUE 1.
+          05 WS-SCREEN-COL      PIC 9(3) VALUE 1.
+          05 WS-SCREEN-ATTR     PIC X(1) VALUE SPACE.
+             88 ATTR-NORMAL     VALUE SPACE.
+             88 ATTR-HIGHLIGHT  VALUE "H".
+             88 ATTR-BLINK      VALUE "B".
+             88 ATTR-REVERSE    VALUE "R".
+`);
+
+registerCopybook('ERROR-HANDLING', `
+       01 WS-ERROR-HANDLING.
+          05 WS-ERROR-CODE      PIC 9(4) VALUE 0.
+          05 WS-ERROR-MSG       PIC X(80) VALUE SPACES.
+          05 WS-ERROR-FLAG      PIC 9(1) VALUE 0.
+             88 NO-ERROR        VALUE 0.
+             88 HAS-ERROR       VALUE 1.
+`);
+
+registerCopybook('FILE-STATUS', `
+       01 WS-FILE-STATUS.
+          05 WS-FS-CODE         PIC X(2) VALUE "00".
+             88 FS-SUCCESS      VALUE "00".
+             88 FS-EOF          VALUE "10".
+             88 FS-KEY-NOT-FOUND VALUE "23".
+             88 FS-DUPLICATE-KEY VALUE "22".
+             88 FS-FILE-NOT-FOUND VALUE "35".
+          05 WS-FS-MSG          PIC X(40) VALUE SPACES.
+`);
+
+/**
  * COBOL Runtime - High-level API for compiling and executing COBOL programs
  */
 export class CobolRuntime {
@@ -80,9 +218,14 @@ export class CobolRuntime {
         this.dialectManager.clearWarnings();
 
         try {
+            // Preprocess COPY statements
+            this.callbacks.onStatus('Prétraitement COPY...');
+            const preprocessor = new CopyPreprocessor();
+            const processedSource = preprocessor.process(source);
+
             // Auto-detect dialect if set to AUTO
             if (this.dialectManager.dialect === CobolDialect.AUTO) {
-                const detected = this.dialectManager.detectDialect(source);
+                const detected = this.dialectManager.detectDialect(processedSource);
                 this.callbacks.onStatus(`Dialecte détecté: ${detected}`);
             }
 
@@ -91,7 +234,7 @@ export class CobolRuntime {
 
             // Lexical analysis
             this.callbacks.onStatus('Analyse lexicale...');
-            const lexer = new Lexer(source, this.dialectManager);
+            const lexer = new Lexer(processedSource, this.dialectManager);
             this.tokens = lexer.tokenize();
 
             // Filter out comments for display

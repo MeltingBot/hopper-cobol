@@ -58,6 +58,7 @@
                         <button class="btn btn-success" onclick="runProgram()" id="btnRun" disabled>▶ Exécuter</button>
                         <button class="btn btn-step" onclick="startDebugMode()" id="btnStep" disabled>⏯ Debug</button>
                         <button class="btn btn-stop hidden" onclick="stopDebugMode()" id="btnStopDebug">■ Stop</button>
+                        <button class="btn btn-print" onclick="printOutput()" id="btnPrint" title="Imprimer la sortie">🖨️</button>
                         <button class="btn btn-danger" onclick="clearAll()">✕ Effacer</button>
                         <button class="btn btn-secondary" onclick="downloadCards()">↓ Export</button>
                         <input type="file" id="cobFileInput" accept=".cob,.cbl,.txt" style="display:none" onchange="handleCobFileImport(event)">
@@ -159,14 +160,24 @@
             <span class="reference-sep">│</span>
             <span id="stepModeIndicator" class="step-indicator hidden">⏯ MODE DEBUG</span>
         </div>
-        <!-- Debug Variables Panel (hidden by default) -->
+        <!-- Debug Panel with Variables and Explanations (hidden by default) -->
         <div class="debug-panel hidden" id="debugPanel">
             <div class="debug-header">
-                <span class="debug-title">Variables</span>
+                <span class="debug-title">🎓 Mode Pédagogique</span>
                 <span class="debug-line" id="debugLine">Ligne: -</span>
                 <span class="debug-stmt" id="debugStmt">-</span>
             </div>
-            <div class="debug-variables" id="debugVariables"></div>
+            <div class="debug-content">
+                <div class="debug-explanation" id="debugExplanation">
+                    <div class="debug-explanation-placeholder">
+                        Cliquez "Suivant" pour exécuter la première instruction
+                    </div>
+                </div>
+                <div class="debug-variables-section">
+                    <div class="debug-section-title">📊 Variables</div>
+                    <div class="debug-variables" id="debugVariables"></div>
+                </div>
+            </div>
             <div class="debug-controls">
                 <button class="debug-btn" onclick="debugStepNext()" id="btnDebugNext">► Suivant</button>
                 <button class="debug-btn" onclick="debugContinue()" id="btnDebugContinue">▶▶ Continuer</button>

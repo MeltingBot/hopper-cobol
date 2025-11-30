@@ -12,7 +12,9 @@ A web-based COBOL emulator with IBM 029 punch card visualization, running entire
 - **Auto-Detection** - Automatically detects the appropriate dialect from source code
 - **IBM 3270 Screen Control** - Full-screen terminal emulation with positioning and attributes
 - **Punch Card Visualization** - Realistic IBM 029 keypunch simulation with animations
-- **Debug Mode** - Step-by-step execution with variable inspection
+- **Pedagogical Debug Mode** - Step-by-step execution with variable inspection and French explanations
+- **Subprograms & Copybooks** - CALL/CANCEL statements and COPY with REPLACING
+- **Dot-Matrix Printer** - Retro green-bar paper output with tractor feed holes
 - **File I/O** - Simulated SEQUENTIAL and INDEXED file operations via IndexedDB
 - **SORT/MERGE** - Full support for sorting and merging data files
 - **10 Example Programs** - Banking, invoicing, payroll, inventory management, etc.
@@ -42,6 +44,8 @@ HOPPER implements a comprehensive subset of COBOL-68 through COBOL-85:
 | **String Handling** | STRING, UNSTRING, INSPECT, Reference Modification `VAR(1:5)` |
 | **Tables** | OCCURS, SEARCH, SEARCH ALL, subscripting |
 | **File I/O** | OPEN, READ, WRITE, REWRITE, DELETE, CLOSE, SORT, MERGE |
+| **Subprograms** | CALL, CANCEL, USING (BY REFERENCE/CONTENT/VALUE) |
+| **Copybooks** | COPY, REPLACING, built-in copybooks (DATE-VARS, FILE-STATUS...) |
 | **Screen Control** | IBM 3270 extensions (LINE, POSITION, ERASE, HIGHLIGHT...) |
 
 **[Complete COBOL Reference Guide](docs/COBOL-REFERENCE.md)** - Full syntax documentation with examples
@@ -90,13 +94,15 @@ hopper-cobol/
 │   ├── main.js             # App initialization
 │   ├── editor.js           # Code editor & runtime
 │   ├── punchCard.js        # IBM punch card encoding
+│   ├── printer.js          # Dot-matrix printer simulation
 │   ├── dataManagerIDB.js   # IndexedDB file storage
 │   ├── tutorial.js         # Example programs
 │   └── cobol/
-│       ├── index.js        # CobolRuntime API
+│       ├── index.js        # CobolRuntime API & Copybook preprocessor
 │       ├── lexer.js        # Tokenizer
 │       ├── parser.js       # AST builder
 │       ├── interpreter.js  # Execution engine
+│       ├── explanations.js # Pedagogical explanations (French)
 │       └── dialects.js     # Dialect configuration & detection
 └── cobol-examples/         # Sample programs
     ├── demo-ecran.cob      # Screen control demo (IBM 3270)

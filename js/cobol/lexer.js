@@ -118,6 +118,21 @@ export const TokenType = {
     NEXT: 'NEXT',
     SENTENCE: 'SENTENCE',
 
+    // Keywords - Subprograms
+    CALL: 'CALL',
+    CANCEL: 'CANCEL',
+    USING: 'USING',
+    BY_REFERENCE: 'BY_REFERENCE',
+    BY_CONTENT: 'BY_CONTENT',
+    BY_VALUE: 'BY_VALUE',
+    END_CALL: 'END_CALL',
+    ON_EXCEPTION: 'ON_EXCEPTION',
+    NOT_ON_EXCEPTION: 'NOT_ON_EXCEPTION',
+
+    // Keywords - Copybooks
+    COPY: 'COPY',
+    // REPLACING already defined in string manipulation
+
     // Keywords - File I/O
     OPEN: 'OPEN',
     CLOSE: 'CLOSE',
@@ -348,6 +363,14 @@ const KEYWORDS = {
     'CONTINUE': TokenType.CONTINUE,
     'NEXT': TokenType.NEXT,
     'SENTENCE': TokenType.SENTENCE,
+    'CALL': TokenType.CALL,
+    'CANCEL': TokenType.CANCEL,
+    'USING': TokenType.USING,
+    'BY': TokenType.BY,
+    'REFERENCE': TokenType.BY_REFERENCE,
+    'CONTENT': TokenType.BY_CONTENT,
+    'END-CALL': TokenType.END_CALL,
+    'COPY': TokenType.COPY,
     'OPEN': TokenType.OPEN,
     'CLOSE': TokenType.CLOSE,
     'READ': TokenType.READ,

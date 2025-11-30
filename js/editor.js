@@ -6,6 +6,8 @@
 import { renderPunchCard, renderPunchCardAnimated, stopPunchAnimation } from './punchCard.js';
 import { setStatus, showOutput, showOutputCursor, hideOutputCursor, updateCardCount, openModal, closeModal, downloadFile, logIO } from './utils.js';
 import { CobolRuntime, CobolDialect } from './cobol/index.js';
+import { explainStatement, getCategoryInfo, getShortSummary } from './cobol/explanations.js';
+import { printCompilationOutput, closePrinter } from './printer.js';
 
 // State
 let cards = [];
@@ -539,6 +541,9 @@ export function compileOnly() {
 // Animation state
 let compilingInProgress = false;
 let compiledProgramId = 'PROGRAM';
+
+// Program output buffer for printer
+let programOutputBuffer = [];
 
 /**
  * Animate cards being read through the hopper
@@ -1235,12 +1240,16 @@ export function compileCode() {
     // Get data manager files for file operations (use sync cache)
     const dataManager = window.dataManagerModule?.getFilesSync?.() || {};
 
+    // Clear output buffer for printer
+    programOutputBuffer = [];
+
     // Create runtime with callbacks and dialect
     cobolRuntime = new CobolRuntime({
         dialect: currentDialect,
         onDisplay: (msg) => {
             showOutput('success', msg);
             logIO('output', msg);
+            programOutputBuffer.push(msg); // Store for printer
         },
         onAccept: (varName) => {
             showOutput('info', `En attente d'entrée pour ${varName}...`);
@@ -1361,6 +1370,18 @@ export function clearAll() {
     if (compilerOutput) compilerOutput.innerHTML = '<div class="output-line info">█ COBOL Runtime</div><div class="output-line info">█ Prêt.</div>';
 
     setStatus('ok', 'PRÊT');
+}
+
+/**
+ * Print program output to dot-matrix printer
+ */
+export function printOutput() {
+    if (programOutputBuffer.length === 0) {
+        showOutput('warning', 'Aucune sortie à imprimer. Exécutez d\'abord le programme.');
+        return;
+    }
+
+    printCompilationOutput(compiledProgramId, programOutputBuffer);
 }
 
 /**
@@ -1807,6 +1828,7 @@ function handleDebugStep(stepInfo) {
     const debugLine = document.getElementById('debugLine');
     const debugStmt = document.getElementById('debugStmt');
     const debugVariables = document.getElementById('debugVariables');
+    const debugExplanation = document.getElementById('debugExplanation');
 
     // Update current statement info
     if (debugLine) {
@@ -1821,8 +1843,48 @@ function handleDebugStep(stepInfo) {
         updateDebugVariables(stepInfo.variables);
     }
 
-    // Highlight line in console
-    showOutput('highlight', `► ${stepInfo.type} (ligne ${stepInfo.line || '?'})`);
+    // Get and display pedagogical explanation
+    const explanation = explainStatement(stepInfo.statement, stepInfo.variables);
+    if (explanation && debugExplanation) {
+        const categoryInfo = getCategoryInfo(explanation.category);
+        updateDebugExplanation(debugExplanation, explanation, categoryInfo);
+    }
+
+    // Highlight line in console with short summary
+    const summary = explanation ? explanation.title : stepInfo.type;
+    showOutput('highlight', `► ${summary} (ligne ${stepInfo.line || '?'})`);
+
+    // Show explanation tip in console
+    if (explanation && explanation.tip) {
+        showOutput('info', `   💡 ${explanation.tip}`);
+    }
+}
+
+/**
+ * Update the debug explanation panel
+ */
+function updateDebugExplanation(container, explanation, categoryInfo) {
+    const html = `
+        <div class="debug-explanation-header">
+            <span class="debug-category" style="color: ${categoryInfo.color}">
+                ${categoryInfo.icon} ${categoryInfo.name}
+            </span>
+        </div>
+        <div class="debug-explanation-title">${explanation.title}</div>
+        <div class="debug-explanation-desc">${escapeHtml(explanation.description)}</div>
+        ${explanation.syntax ? `
+            <div class="debug-explanation-syntax">
+                <strong>Syntaxe:</strong> <code>${escapeHtml(explanation.syntax)}</code>
+            </div>
+        ` : ''}
+        ${explanation.example ? `
+            <div class="debug-explanation-example">
+                <strong>Exemple:</strong>
+                <pre>${escapeHtml(explanation.example)}</pre>
+            </div>
+        ` : ''}
+    `;
+    container.innerHTML = html;
 }
 
 /**

@@ -303,6 +303,8 @@ body::after {
 .btn-step:hover { background: #3a3a2a; box-shadow: 0 0 8px rgba(204, 136, 0, 0.4); }
 .btn-step.active { background: #4a4a2a; box-shadow: 0 0 12px rgba(204, 136, 0, 0.6); animation: pulse-step 1.5s infinite; }
 @keyframes pulse-step { 50% { box-shadow: 0 0 20px rgba(204, 136, 0, 0.8); } }
+.btn-print { background: #1a2a2a; color: #66cccc; border: 1px solid #448888; font-size: 0.85rem; padding: 0.3rem 0.5rem; }
+.btn-print:hover { background: #2a3a3a; box-shadow: 0 0 8px rgba(68, 136, 136, 0.4); }
 
 /* Card Navigation */
 .card-nav { display: flex; align-items: center; justify-content: center; gap: 0.4rem; padding: 0.4rem 0.6rem; background: #111; border-top: 1px solid var(--panel-border); }
@@ -1108,6 +1110,92 @@ body::after {
     color: white;
 }
 
+/* Debug content layout */
+.debug-content {
+    display: flex;
+    gap: 1.5rem;
+    max-height: 200px;
+    overflow: hidden;
+}
+
+.debug-explanation {
+    flex: 2;
+    font-size: 0.7rem;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+
+.debug-variables-section {
+    flex: 1;
+    min-width: 200px;
+}
+
+.debug-section-title {
+    color: var(--phosphor-dim);
+    font-size: 0.65rem;
+    margin-bottom: 0.3rem;
+    font-weight: bold;
+}
+
+.debug-explanation-placeholder {
+    color: var(--phosphor-dim);
+    font-style: italic;
+    padding: 1rem;
+    text-align: center;
+}
+
+.debug-explanation-header {
+    margin-bottom: 0.4rem;
+}
+
+.debug-category {
+    font-size: 0.65rem;
+    font-weight: bold;
+}
+
+.debug-explanation-title {
+    font-size: 0.85rem;
+    font-weight: bold;
+    color: var(--phosphor-green);
+    text-shadow: 0 0 6px var(--phosphor-glow);
+    margin-bottom: 0.3rem;
+}
+
+.debug-explanation-desc {
+    color: #ccc;
+    line-height: 1.4;
+    margin-bottom: 0.5rem;
+}
+
+.debug-explanation-syntax {
+    background: rgba(0, 0, 0, 0.4);
+    padding: 0.4rem;
+    border-radius: 3px;
+    margin-bottom: 0.4rem;
+    border-left: 2px solid #8cf;
+}
+
+.debug-explanation-syntax code {
+    color: #8cf;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.65rem;
+}
+
+.debug-explanation-example {
+    background: rgba(0, 0, 0, 0.4);
+    padding: 0.4rem;
+    border-radius: 3px;
+    border-left: 2px solid var(--phosphor-dim);
+}
+
+.debug-explanation-example pre {
+    color: var(--phosphor-green);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.6rem;
+    margin: 0.2rem 0 0 0;
+    white-space: pre-wrap;
+}
+
 /* Stop button */
 .btn-stop {
     background: #3a1a1a;
@@ -1205,4 +1293,276 @@ body::after {
 
 .terminal-screen.screen-mode .terminal-output {
     padding: 0;
+}
+
+/* ============================================
+   DOT MATRIX PRINTER STYLES
+   ============================================ */
+
+.printer-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.printer-modal.hidden {
+    display: none;
+}
+
+.printer-container {
+    background: #2a2a2a;
+    border: 2px solid #555;
+    border-radius: 8px;
+    width: 95%;
+    max-width: 1100px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+}
+
+.printer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.8rem 1rem;
+    background: linear-gradient(180deg, #444, #333);
+    border-bottom: 2px solid #555;
+    border-radius: 6px 6px 0 0;
+}
+
+.printer-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #fff;
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+.printer-icon {
+    font-size: 1.2rem;
+}
+
+.printer-info {
+    color: #aaa;
+    font-size: 0.75rem;
+}
+
+.printer-controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.printer-btn {
+    background: #444;
+    border: 1px solid #666;
+    color: #fff;
+    padding: 0.4rem 0.8rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.75rem;
+    transition: all 0.15s;
+}
+
+.printer-btn:hover {
+    background: #555;
+    border-color: #888;
+}
+
+.printer-btn.close {
+    background: #663333;
+    border-color: #884444;
+}
+
+.printer-btn.close:hover {
+    background: #884444;
+}
+
+.printer-paper-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    background: #1a1a1a;
+}
+
+.printer-paper {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+/* Individual page */
+.printer-page {
+    display: flex;
+    background: #f5f5dc; /* Old paper color */
+    border-radius: 2px;
+    box-shadow:
+        0 4px 20px rgba(0, 0, 0, 0.5),
+        inset 0 0 60px rgba(0, 0, 0, 0.05);
+    position: relative;
+    font-family: 'Courier New', 'Courier', monospace;
+}
+
+/* Tractor feed holes on the sides */
+.tractor-feed {
+    width: 24px;
+    background: linear-gradient(90deg, #e8e8d0, #f0f0e0, #e8e8d0);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    align-items: center;
+    padding: 1rem 0;
+    flex-shrink: 0;
+}
+
+.tractor-feed.left {
+    border-right: 1px dashed #ccc;
+    border-radius: 2px 0 0 2px;
+}
+
+.tractor-feed.right {
+    border-left: 1px dashed #ccc;
+    border-radius: 0 2px 2px 0;
+}
+
+.tractor-hole {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #1a1a1a;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Paper content area */
+.paper-content {
+    flex: 1;
+    padding: 0.5rem 1rem;
+    min-height: 400px;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.3rem 0;
+    border-bottom: 1px dashed #999;
+    margin-bottom: 0.5rem;
+    font-size: 0.7rem;
+    color: #666;
+}
+
+.page-footer {
+    text-align: center;
+    padding-top: 0.5rem;
+    border-top: 1px dashed #999;
+    margin-top: 0.5rem;
+    font-size: 0.65rem;
+    color: #888;
+}
+
+/* Print lines with green bar effect */
+.print-lines {
+    font-size: 0.7rem;
+    line-height: 1.4;
+}
+
+.print-line {
+    display: flex;
+    padding: 1px 4px;
+    transition: background 0.1s;
+}
+
+.print-line.green-bar {
+    background: linear-gradient(
+        180deg,
+        rgba(200, 230, 200, 0.6) 0%,
+        rgba(180, 220, 180, 0.7) 50%,
+        rgba(200, 230, 200, 0.6) 100%
+    );
+}
+
+.line-number {
+    color: #999;
+    font-size: 0.6rem;
+    width: 35px;
+    flex-shrink: 0;
+    text-align: right;
+    padding-right: 8px;
+    border-right: 1px solid #ccc;
+    margin-right: 8px;
+}
+
+.line-text {
+    color: #222;
+    white-space: pre;
+    /* Dot matrix effect */
+    letter-spacing: 0.5px;
+}
+
+.line-text.bold {
+    font-weight: bold;
+}
+
+.line-text.underline {
+    text-decoration: underline;
+}
+
+/* Dot matrix font simulation */
+@font-face {
+    font-family: 'DotMatrix';
+    src: local('Courier New'), local('Courier');
+}
+
+/* Print animation */
+@keyframes print-slide {
+    0% { transform: translateY(-10px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+}
+
+.printer-page {
+    animation: print-slide 0.3s ease-out;
+}
+
+/* Perforations between pages */
+.printer-page::after {
+    content: '';
+    position: absolute;
+    bottom: -1rem;
+    left: 24px;
+    right: 24px;
+    height: 0;
+    border-bottom: 2px dashed #aaa;
+}
+
+/* Responsive adjustments */
+@media (max-width: 900px) {
+    .printer-container {
+        width: 98%;
+        max-height: 95vh;
+    }
+
+    .printer-paper-container {
+        padding: 0.5rem;
+    }
+
+    .paper-content {
+        padding: 0.3rem 0.5rem;
+    }
+
+    .print-line {
+        font-size: 0.6rem;
+    }
+
+    .line-number {
+        font-size: 0.5rem;
+        width: 25px;
+    }
 }

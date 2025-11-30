@@ -44,6 +44,9 @@ window.stopDebugMode = editor.stopDebugMode;
 window.debugStepNext = editor.debugStepNext;
 window.debugContinue = editor.debugContinue;
 
+// Printer function
+window.printOutput = editor.printOutput;
+
 // Console input (in editor tab)
 window.submitConsoleInput = editor.submitConsoleInput;
 
