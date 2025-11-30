@@ -523,6 +523,7 @@ export class Parser {
             indexedBy: [],           // Index names (INDEXED BY)
             ascendingKey: null,      // Key for SEARCH ALL
             descendingKey: null,     // Key for SEARCH ALL
+            usage: null,             // USAGE clause (DISPLAY, COMP, COMP-3, BINARY, etc.)
             children: [],
             conditionNames: [],  // 88 level condition names attached to this item
         });
@@ -599,6 +600,14 @@ export class Parser {
                         node.indexedBy.push(this.advance().value);
                     }
                 }
+            } else if (this.check(TokenType.USAGE)) {
+                // USAGE [IS] DISPLAY|COMP|COMP-3|BINARY|PACKED-DECIMAL|...
+                this.advance();
+                this.optional(TokenType.IS);
+                node.usage = this.parseUsageType();
+            } else if (this.isUsageType()) {
+                // Short form: COMP, COMP-3, BINARY, etc. without USAGE keyword
+                node.usage = this.parseUsageType();
             } else {
                 this.advance();
             }
@@ -606,6 +615,51 @@ export class Parser {
 
         this.skipPeriod();
         return node;
+    }
+
+    /**
+     * Check if current token is a USAGE type
+     */
+    isUsageType() {
+        return this.checkAny(
+            TokenType.COMP, TokenType.COMP_1, TokenType.COMP_2, TokenType.COMP_3,
+            TokenType.COMP_4, TokenType.COMP_5,
+            TokenType.COMPUTATIONAL, TokenType.COMPUTATIONAL_1, TokenType.COMPUTATIONAL_2,
+            TokenType.COMPUTATIONAL_3, TokenType.COMPUTATIONAL_4, TokenType.COMPUTATIONAL_5,
+            TokenType.BINARY, TokenType.PACKED_DECIMAL
+        );
+    }
+
+    /**
+     * Parse USAGE type and return normalized value
+     */
+    parseUsageType() {
+        const token = this.advance();
+        switch (token.type) {
+            case TokenType.COMP:
+            case TokenType.COMPUTATIONAL:
+            case TokenType.COMP_4:
+            case TokenType.COMPUTATIONAL_4:
+            case TokenType.BINARY:
+                return 'BINARY';  // COMP/COMP-4/BINARY = binary format
+            case TokenType.COMP_1:
+            case TokenType.COMPUTATIONAL_1:
+                return 'COMP-1'; // Single-precision floating point
+            case TokenType.COMP_2:
+            case TokenType.COMPUTATIONAL_2:
+                return 'COMP-2'; // Double-precision floating point
+            case TokenType.COMP_3:
+            case TokenType.COMPUTATIONAL_3:
+            case TokenType.PACKED_DECIMAL:
+                return 'PACKED-DECIMAL'; // Packed decimal
+            case TokenType.COMP_5:
+            case TokenType.COMPUTATIONAL_5:
+                return 'COMP-5'; // Native binary (platform-dependent)
+            case TokenType.DISPLAY:
+                return 'DISPLAY'; // Default character format
+            default:
+                return 'DISPLAY';
+        }
     }
 
     /**

@@ -13,12 +13,17 @@ const { CONDITION_NAME } = NodeType;
  * PIC clause parser - extracts type and length from PIC strings
  */
 function parsePic(picString) {
-    if (!picString) return { type: 'alphanumeric', length: 1, decimals: 0, signed: false, edited: false, editMask: '' };
+    if (!picString) return {
+        type: 'alphanumeric', length: 1, decimals: 0, signed: false, edited: false, editMask: '',
+        intDigits: 0, decDigits: 0
+    };
 
     const pic = picString.toUpperCase();
     let type = 'alphanumeric';
     let length = 0;
     let decimals = 0;
+    let intDigits = 0;   // Count of integer digits (before V)
+    let decDigits = 0;   // Count of decimal digits (after V)
     let signed = false;
     let edited = false;
 
@@ -69,8 +74,13 @@ function parsePic(picString) {
             // Add count-1 more of that character (one was already added)
             for (let j = 1; j < count; j++) {
                 editMask += prevChar;
-                if (inDecimal && '9Z*'.includes(prevChar)) {
-                    decimals++;
+                if ('9Z*'.includes(prevChar)) {
+                    if (inDecimal) {
+                        decimals++;
+                        decDigits++;
+                    } else {
+                        intDigits++;
+                    }
                 }
                 if ('X9AZ*'.includes(prevChar)) {
                     length++;
@@ -82,8 +92,13 @@ function parsePic(picString) {
 
         if ('X9AVSZ*+-.,'.includes(char)) {
             editMask += char;
-            if (inDecimal && '9Z*'.includes(char)) {
-                decimals++;
+            if ('9Z*'.includes(char)) {
+                if (inDecimal) {
+                    decimals++;
+                    decDigits++;
+                } else {
+                    intDigits++;
+                }
             }
             if ('X9AZ*'.includes(char)) {
                 length++;
@@ -100,7 +115,7 @@ function parsePic(picString) {
         i++;
     }
 
-    return { type, length: length || 1, decimals, signed, edited, editMask };
+    return { type, length: length || 1, decimals, signed, edited, editMask, intDigits, decDigits };
 }
 
 /**
@@ -251,6 +266,8 @@ class Variable {
         this.indexedBy = definition.indexedBy || []; // Index names for SEARCH
         this.ascendingKey = definition.ascendingKey || null; // Key for SEARCH ALL
         this.descendingKey = definition.descendingKey || null;
+        // USAGE clause: DISPLAY (default), BINARY (COMP/COMP-4), PACKED-DECIMAL (COMP-3), etc.
+        this.usage = definition.usage || 'DISPLAY';
         // Initialize value AFTER children array exists (for getTotalLength in groups)
         this.value = this.getInitialValue();
     }
@@ -374,7 +391,41 @@ class Variable {
                 return sum + (childLen * count);
             }, 0);
         }
-        return this.picInfo.length;
+        return this.getStorageLength();
+    }
+
+    /**
+     * Get the storage length based on USAGE
+     * DISPLAY: 1 byte per character
+     * BINARY: 2/4/8 bytes depending on digit count
+     * PACKED-DECIMAL: (n+1)/2 bytes (2 digits per byte + sign nibble)
+     */
+    getStorageLength() {
+        const digits = this.picInfo.intDigits + this.picInfo.decDigits;
+
+        switch (this.usage) {
+            case 'BINARY':
+            case 'COMP-5':
+                // Binary storage: halfword, fullword, or doubleword
+                if (digits <= 4) return 2;      // 2 bytes (halfword)
+                if (digits <= 9) return 4;      // 4 bytes (fullword)
+                return 8;                        // 8 bytes (doubleword)
+
+            case 'PACKED-DECIMAL':
+                // Packed decimal: 2 digits per byte + 1 nibble for sign
+                // For n digits: ceil((n + 1) / 2) bytes
+                return Math.ceil((digits + 1) / 2);
+
+            case 'COMP-1':
+                return 4;  // Single-precision float (4 bytes)
+
+            case 'COMP-2':
+                return 8;  // Double-precision float (8 bytes)
+
+            case 'DISPLAY':
+            default:
+                return this.picInfo.length;  // 1 byte per character
+        }
     }
 
     /**
@@ -408,7 +459,7 @@ class Variable {
                 return sum + (childLen * count);
             }, 0);
         }
-        return this.picInfo.length;
+        return this.getStorageLength();
     }
 
     getNumericValue() {
