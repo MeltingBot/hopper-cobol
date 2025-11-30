@@ -980,6 +980,7 @@ class CobolFileIDB {
         this.organization = definition.organization || 'SEQUENTIAL';
         this.accessMode = definition.accessMode || 'SEQUENTIAL';
         this.recordKey = definition.recordKey;
+        this.relativeKey = definition.relativeKey;  // For RELATIVE organization
         this.storage = storage; // IndexedDB storage module
         this.isOpen = false;
         this.mode = null;
@@ -1087,6 +1088,30 @@ class CobolFileIDB {
         return { success: false, invalidKey: true };
     }
 
+    async readRelative(recordNum) {
+        if (!this.isOpen || this.organization !== 'RELATIVE') {
+            return { success: false, invalidKey: true };
+        }
+
+        const fileName = this.getFileName();
+
+        // Load records if not cached
+        if (this.cursorRecords.length === 0) {
+            this.cursorRecords = await this.storage.readAllRecords(fileName);
+        }
+
+        // Record numbers are 1-based in COBOL
+        const index = recordNum - 1;
+        if (index < 0 || index >= this.cursorRecords.length) {
+            return { success: false, invalidKey: true };
+        }
+
+        const record = this.cursorRecords[index];
+        this.lastReadRecord = record;
+        this.cursorPosition = index + 1;  // Position after this record for sequential reads
+        return { success: true, record };
+    }
+
     async write(record) {
         if (!this.isOpen || (this.mode !== 'OUTPUT' && this.mode !== 'I-O' && this.mode !== 'EXTEND')) {
             return { success: false };
@@ -1170,17 +1195,46 @@ class CobolFileIDB {
     }
 
     async start(keyValue, operator = '>=') {
-        if (!this.isOpen || this.organization !== 'INDEXED') {
+        if (!this.isOpen) {
             return false;
         }
 
         const fileName = this.getFileName();
 
-        // Get records from the start key
-        this.cursorRecords = await this.storage.readFromKey(fileName, keyValue?.toString().trim(), operator);
-        this.cursorPosition = 0;
+        if (this.organization === 'INDEXED') {
+            // For INDEXED files, use the key to position
+            this.cursorRecords = await this.storage.readFromKey(fileName, keyValue?.toString().trim(), operator);
+            this.cursorPosition = 0;
+            return this.cursorRecords.length > 0;
+        } else if (this.organization === 'RELATIVE') {
+            // For RELATIVE files, use the record number to position
+            const recordNum = parseInt(keyValue) || 1;
+            this.cursorRecords = await this.storage.readAllRecords(fileName);
 
-        return this.cursorRecords.length > 0;
+            // Position based on operator
+            let startPos = 0;
+            switch (operator) {
+                case '=':
+                    startPos = recordNum - 1;  // Convert to 0-based
+                    break;
+                case '>':
+                    startPos = recordNum;  // After the specified record
+                    break;
+                case '>=':
+                default:
+                    startPos = recordNum - 1;  // At or after
+                    break;
+            }
+
+            if (startPos < 0 || startPos >= this.cursorRecords.length) {
+                return false;
+            }
+
+            this.cursorPosition = startPos;
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -2573,6 +2627,10 @@ export class Interpreter {
             } else {
                 result = await file.read();
             }
+        } else if (file.organization === 'RELATIVE' && file.relativeKey && file.accessMode !== 'SEQUENTIAL') {
+            // For RELATIVE files with RANDOM/DYNAMIC access, use the relative key
+            const recordNum = parseInt(this.runtime.getValue(file.relativeKey)) || 1;
+            result = await file.readRelative(recordNum);
         } else {
             // Sequential read
             result = await file.read();
@@ -2797,6 +2855,9 @@ export class Interpreter {
         let keyValue = '';
         if (stmt.key) {
             keyValue = this.runtime.getValue(stmt.key) || '';
+        } else if (file.organization === 'RELATIVE' && file.relativeKey) {
+            // For RELATIVE files without explicit key, use the relative key variable
+            keyValue = this.runtime.getValue(file.relativeKey) || '1';
         }
 
         // Position the file cursor

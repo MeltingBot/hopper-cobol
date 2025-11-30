@@ -372,6 +372,7 @@ export class Parser {
             organization: 'SEQUENTIAL',
             accessMode: 'SEQUENTIAL',
             recordKey: null,
+            relativeKey: null,  // For RELATIVE organization
         });
 
         // ASSIGN TO
@@ -406,6 +407,13 @@ export class Parser {
                 this.optional(TokenType.IS);
                 if (this.check(TokenType.IDENTIFIER)) {
                     node.recordKey = this.advance().value;
+                }
+            } else if (this.check(TokenType.RELATIVE)) {
+                this.advance();
+                this.optional(TokenType.KEY);
+                this.optional(TokenType.IS);
+                if (this.check(TokenType.IDENTIFIER)) {
+                    node.relativeKey = this.advance().value;
                 }
             } else {
                 this.advance();
