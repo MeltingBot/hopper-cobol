@@ -18,6 +18,7 @@
         </div>
         <div class="header-tabs">
             <button class="header-tab active" onclick="switchTab('editor', this)">⌨️ Éditeur</button>
+            <button class="header-tab" onclick="switchTab('terminal', this)">📟 Terminal</button>
             <button class="header-tab" onclick="switchTab('data', this)">🗄️ Data</button>
             <button class="header-tab" onclick="switchTab('tutorial', this)">📚 Exemples</button>
         </div>
@@ -185,6 +186,25 @@
                 <button class="debug-btn" onclick="debugRunToBreakpoint()" id="btnDebugBreakpoint" title="Exécuter jusqu'au prochain breakpoint (cliquez sur un n° de ligne pour ajouter)">▶● Breakpoint</button>
                 <button class="debug-btn" onclick="debugContinue()" id="btnDebugContinue">▶▶ Continuer</button>
                 <button class="debug-btn danger" onclick="stopDebugMode()">■ Arrêter</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Terminal Tab -->
+    <div class="tab-content" id="tab-terminal">
+        <div class="terminal-layout">
+            <!-- Left: Disk visualization -->
+            <div id="diskViewContainer"></div>
+
+            <!-- Right: Console I/O -->
+            <div class="console-panel">
+                <div class="panel-header">
+                    <span class="panel-title">📟 Console I/O</span>
+                </div>
+                <div class="terminal-output" id="terminalOutput"></div>
+                <div class="terminal-input-area">
+                    <input type="text" class="terminal-input" id="terminalInput" placeholder="Saisie..." disabled>
+                </div>
             </div>
         </div>
     </div>

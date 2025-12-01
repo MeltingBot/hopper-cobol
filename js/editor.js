@@ -535,6 +535,10 @@ export function compileOnly() {
                 terminalOutput(msg);
                 showOutput('output', msg); // Also show in main console
                 programOutputBuffer.push(msg); // Store for printer
+                // Also send to terminal tab
+                if (window.terminalWrite) {
+                    window.terminalWrite(msg);
+                }
             },
             onDisplayWithOptions: (msg, options) => {
                 terminalOutputWithOptions(msg, options);
@@ -575,7 +579,18 @@ export function compileOnly() {
                 terminalOutput(`⚠ ${warning}`, 'warning');
                 showOutput('warning', `⚠ ${warning}`);
             },
-            dataManager: window.dataManagerModule?.getFilesSync() || {}
+            dataManager: window.dataManagerModule?.getFilesSync() || {},
+            onDiskIO: (event) => {
+                // Send I/O operations to disk view and terminal
+                if (window.diskView) {
+                    window.diskView.onDiskIO(event);
+                }
+                if (window.terminalWrite) {
+                    const { operation, fileName, recordNumber } = event;
+                    const msg = `[${operation}] ${fileName}${recordNumber !== undefined ? ` #${recordNumber}` : ''}`;
+                    window.terminalWrite(msg, 'terminal-io');
+                }
+            }
         });
 
         // Small delay for visual effect

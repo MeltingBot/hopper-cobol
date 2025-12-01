@@ -8,6 +8,7 @@ import { switchTab, closeModal, initResizers } from './utils.js';
 import * as editor from './editor.js';
 import * as dataManager from './dataManagerIDB.js';
 import * as tutorial from './tutorial.js';
+import { DiskView } from './diskView.js';
 
 // Expose modules globally for HTML onclick handlers
 window.editorModule = editor;
@@ -152,6 +153,61 @@ function mainframeBoot() {
 }
 
 /**
+ * Initialize terminal console redirection
+ */
+function initTerminalConsole() {
+    const terminalOutput = document.getElementById('terminalOutput');
+    const terminalInput = document.getElementById('terminalInput');
+
+    // Function to append text to terminal
+    window.terminalWrite = (text, className = '') => {
+        const line = document.createElement('div');
+        line.className = className;
+        line.textContent = text;
+        terminalOutput.appendChild(line);
+        terminalOutput.scrollTop = terminalOutput.scrollHeight;
+    };
+
+    // Function to clear terminal
+    window.terminalClear = () => {
+        terminalOutput.innerHTML = '';
+    };
+
+    // Handle terminal input
+    terminalInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && terminalInput.value.trim()) {
+            const value = terminalInput.value;
+            window.terminalWrite(`> ${value}`, 'terminal-echo');
+
+            // Resolve pending ACCEPT if any
+            if (window.terminalInputResolver) {
+                window.terminalInputResolver(value);
+                window.terminalInputResolver = null;
+                terminalInput.disabled = true;
+            }
+
+            terminalInput.value = '';
+        }
+    });
+
+    // Function to request input (for COBOL ACCEPT)
+    window.terminalAccept = (varName) => {
+        return new Promise((resolve) => {
+            window.terminalWrite(`ACCEPT ${varName}:`, 'terminal-prompt');
+            terminalInput.disabled = false;
+            terminalInput.focus();
+            window.terminalInputResolver = resolve;
+        });
+    };
+
+    // Welcome message
+    window.terminalWrite('═══════════════════════════════════════', 'terminal-header');
+    window.terminalWrite('   IBM 3330 DISK EMULATOR - HOPPER', 'terminal-header');
+    window.terminalWrite('═══════════════════════════════════════', 'terminal-header');
+    window.terminalWrite('');
+}
+
+/**
  * Initialize the application
  */
 function init() {
@@ -163,6 +219,12 @@ function init() {
     dataManager.initDataManager();
     tutorial.initTutorial();
     initResizers();
+
+    // Initialize Disk View for terminal tab
+    window.diskView = new DiskView('diskViewContainer');
+
+    // Redirect console output to terminal
+    initTerminalConsole();
 
     // Expose runtime API for console hackers
     window.HOPPER = {

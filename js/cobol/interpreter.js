@@ -2590,6 +2590,14 @@ export class Interpreter {
             const file = this.runtime.getFile(fileSpec.name);
             if (file) {
                 await file.open(fileSpec.mode);
+                // Notify disk I/O
+                if (this.runtime.callbacks.onDiskIO) {
+                    this.runtime.callbacks.onDiskIO({
+                        operation: 'OPEN',
+                        fileName: fileSpec.name,
+                        cobolLine: stmt.lineNumber
+                    });
+                }
             }
         }
     }
@@ -2602,6 +2610,14 @@ export class Interpreter {
             const file = this.runtime.getFile(fileName);
             if (file) {
                 await file.close();
+                // Notify disk I/O
+                if (this.runtime.callbacks.onDiskIO) {
+                    this.runtime.callbacks.onDiskIO({
+                        operation: 'CLOSE',
+                        fileName: fileName,
+                        cobolLine: stmt.lineNumber
+                    });
+                }
             }
         }
     }
@@ -2664,6 +2680,17 @@ export class Interpreter {
             // Copy record fields to variables (use setRawVariable to avoid re-formatting already-formatted values)
             for (const [key, value] of Object.entries(result.record)) {
                 this.runtime.setRawVariable(key, value);
+            }
+
+            // Notify disk I/O
+            if (this.runtime.callbacks.onDiskIO) {
+                this.runtime.callbacks.onDiskIO({
+                    operation: 'READ',
+                    fileName: stmt.file,
+                    record: result.record,
+                    recordNumber: result.recordNumber,
+                    cobolLine: stmt.lineNumber
+                });
             }
 
             // Execute NOT AT END / NOT INVALID KEY statements
@@ -2769,6 +2796,17 @@ export class Interpreter {
         }
 
         const result = await targetFile.write(record);
+
+        // Notify disk I/O
+        if (this.runtime.callbacks.onDiskIO && result.success) {
+            this.runtime.callbacks.onDiskIO({
+                operation: 'WRITE',
+                fileName: targetFile.name,
+                record: record,
+                recordNumber: result.recordNumber,
+                cobolLine: stmt.lineNumber
+            });
+        }
 
         // Refresh data manager UI in real-time
         if (typeof window !== 'undefined' && window.dataManagerModule?.renderFileList) {

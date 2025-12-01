@@ -161,6 +161,7 @@ export class CobolRuntime {
             onStatus: options.onStatus || (() => {}),
             onStep: options.onStep || null, // Debug step callback
             onDialectWarning: options.onDialectWarning || null, // Dialect warning callback
+            onDiskIO: options.onDiskIO || null, // Disk I/O visualization callback
         };
         this.dataManager = options.dataManager || {};
         this.interpreter = null;
