@@ -695,7 +695,7 @@ function resetCardStack() {
 
 /**
  * Run the compiled program (Step 3: Execute)
- * Opens the terminal modal for interactive execution
+ * Switches to Terminal tab and executes interactively
  */
 export async function runProgram() {
     if (!isCompiled || !cobolRuntime) {
@@ -706,8 +706,11 @@ export async function runProgram() {
     // Clear output buffer for fresh execution
     programOutputBuffer = [];
 
-    // Open terminal modal
-    openTerminal();
+    // Switch to Terminal tab
+    switchToTerminalTab();
+
+    // Initialize terminal for execution
+    initTerminalForExecution();
 
     showOutput('system', '═══════════════════════════════════════');
     showOutput('info', '▶ EXÉCUTION DANS LE TERMINAL...');
@@ -738,40 +741,53 @@ export async function runProgram() {
 }
 
 // ============================================
-// TERMINAL MODAL FUNCTIONS
+// TERMINAL TAB FUNCTIONS
 // ============================================
 
 /**
- * Open the terminal modal
+ * Switch to Terminal tab programmatically
  */
-function openTerminal() {
-    const modal = document.getElementById('terminalModal');
+function switchToTerminalTab() {
+    const terminalTab = document.querySelector('[onclick*="terminal"]');
+    if (terminalTab) {
+        window.switchTab('terminal', terminalTab);
+    }
+}
+
+/**
+ * Initialize terminal for execution
+ */
+function initTerminalForExecution() {
     const output = document.getElementById('terminalOutput');
-    const programEl = document.getElementById('terminalProgram');
     const statusEl = document.getElementById('terminalStatus');
     const inputArea = document.getElementById('terminalInputArea');
+    const terminalInput = document.getElementById('terminalInput');
 
     if (output) output.innerHTML = '';
-    if (programEl) programEl.textContent = compiledProgramId || 'PROGRAM';
     if (statusEl) {
         statusEl.textContent = 'RUNNING';
-        statusEl.className = 'terminal-status';
+        statusEl.className = 'panel-badge running';
     }
-    if (inputArea) inputArea.classList.remove('hidden');
-    if (modal) modal.classList.add('active');
+    if (inputArea) inputArea.style.display = 'flex';
+    if (terminalInput) {
+        terminalInput.disabled = false;
+        terminalInput.value = '';
+    }
 
     terminalOutput('HOPPER 3270 TERMINAL - SESSION ACTIVE', 'system');
     terminalOutput(`PROGRAMME: ${compiledProgramId}`, 'system');
     terminalOutput('─'.repeat(40), 'separator');
+
+    // Reset disk view
+    if (window.diskView) {
+        window.diskView.reset();
+    }
 }
 
 /**
- * Close the terminal modal
+ * Close terminal (no longer needed, kept for compatibility)
  */
 export function closeTerminal() {
-    const modal = document.getElementById('terminalModal');
-    if (modal) modal.classList.remove('active');
-
     // Reset screen mode
     screenModeEnabled = false;
     screenBuffer = null;
@@ -780,14 +796,10 @@ export function closeTerminal() {
 
 /**
  * Add output to terminal
- * Only adds if terminal modal is open
  */
 function terminalOutput(msg, type = '') {
-    const modal = document.getElementById('terminalModal');
     const output = document.getElementById('terminalOutput');
-
-    // Only output if terminal is open
-    if (!modal?.classList.contains('active') || !output) return;
+    if (!output) return;
 
     // If screen mode is enabled, use screen buffer instead
     if (screenModeEnabled && screenBuffer) {
@@ -813,10 +825,8 @@ function terminalOutput(msg, type = '') {
  * Show blinking cursor for ACCEPT input
  */
 function terminalShowInputCursor() {
-    const modal = document.getElementById('terminalModal');
     const output = document.getElementById('terminalOutput');
-
-    if (!modal?.classList.contains('active') || !output) return;
+    if (!output) return;
 
     const cursor = document.createElement('span');
     cursor.className = 'terminal-cursor blink';
@@ -847,10 +857,6 @@ function terminalHideInputCursor() {
  * Add output to terminal with screen control options
  */
 function terminalOutputWithOptions(msg, options) {
-    const modal = document.getElementById('terminalModal');
-
-    // Only output if terminal is open
-    if (!modal?.classList.contains('active')) return;
 
     // Enable screen mode if not already enabled
     if (!screenModeEnabled) {

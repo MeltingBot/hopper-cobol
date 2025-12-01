@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IBM 3330 Disk Visualization - Hopper COBOL</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #0d0d0d;
+            color: #00ff88;
+            font-family: 'IBM Plex Mono', monospace;
+            min-height: 100vh;
+        }
+        
+        h1 {
+            text-align: center;
+            font-size: 18px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+        
+        .demo-controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            background: #1a1a1a;
+            border: 1px solid #00ff88;
+            color: #00ff88;
+            padding: 10px 20px;
+            font-family: inherit;
+            font-size: 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        
+        button:hover {
+            background: #00ff88;
+            color: #000;
+        }
+        
+        button.write { border-color: #ff6b6b; color: #ff6b6b; }
+        button.write:hover { background: #ff6b6b; color: #000; }
+        
+        button.open { border-color: #4ecdc4; color: #4ecdc4; }
+        button.open:hover { background: #4ecdc4; color: #000; }
+        
+        #disk-container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        .cobol-code {
+            max-width: 900px;
+            margin: 20px auto;
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 15px;
+        }
+        
+        .cobol-code h3 {
+            margin: 0 0 10px 0;
+            font-size: 12px;
+            color: #888;
+        }
+        
+        .code-line {
+            display: flex;
+            font-size: 11px;
+            line-height: 1.6;
+        }
+        
+        .line-num {
+            color: #555;
+            width: 40px;
+            text-align: right;
+            padding-right: 10px;
+            user-select: none;
+        }
+        
+        .line-content {
+            color: #0f0;
+        }
+        
+        .line-content.highlight {
+            background: rgba(0, 255, 136, 0.2);
+            color: #fff;
+        }
+        
+        .keyword { color: #ff79c6; }
+        .string { color: #f1fa8c; }
+        .identifier { color: #8be9fd; }
+    </style>
+</head>
+<body>
+    <h1>📀 IBM 3330 DISK EMULATION - HOPPER COBOL</h1>
+    
+    <div class="demo-controls">
+        <button class="open" onclick="simulateOpen('CLIENTS')">OPEN CLIENTS</button>
+        <button class="open" onclick="simulateOpen('PRODUCTS')">OPEN PRODUCTS</button>
+        <button onclick="simulateRead('CLIENTS')">READ CLIENTS</button>
+        <button onclick="simulateRead('PRODUCTS')">READ PRODUCTS</button>
+        <button class="write" onclick="simulateWrite('CLIENTS')">WRITE CLIENTS</button>
+        <button class="write" onclick="simulateWrite('PRODUCTS')">WRITE PRODUCTS</button>
+        <button onclick="simulateSequence()">▶ SÉQUENCE AUTO</button>
+        <button onclick="diskView.reset()">↺ RESET</button>
+    </div>
+    
+    <div id="disk-container"></div>
+    
+    <div class="cobol-code">
+        <h3>📄 PROCEDURE DIVISION (extrait)</h3>
+        <div id="cobol-source"></div>
+    </div>
+
+    <script type="module">
+        // Inline DiskView class for standalone demo
+        class DiskView {
+            constructor(containerId, options = {}) {
+                this.container = document.getElementById(containerId);
+                this.options = {
+                    diskRadius: 180,
+                    innerRadius: 40,
+                    trackCount: 8,
+                    rotationSpeed: 3000,
+                    ...options
+                };
+                
+                this.datasets = new Map();
+                this.currentTrack = 0;
+                this.currentRecord = 0;
+                this.ioLog = [];
+                this.isSpinning = false;
+                this.headAngle = 0;
+                this.diskAngle = 0;
+                
+                this.datasetColors = [
+                    '#00ff88', '#ff6b6b', '#4ecdc4', '#ffe66d', 
+                    '#a29bfe', '#fd79a8', '#74b9ff', '#55efc4'
+                ];
+                this.colorIndex = 0;
+                
+                this.init();
+            }
+            
+            init() {
+                this.container.innerHTML = this.renderHTML();
+                this.canvas = this.container.querySelector('#disk-canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.recordDisplay = this.container.querySelector('#record-display');
+                this.ioTimeline = this.container.querySelector('#io-timeline');
+                this.statusBar = this.container.querySelector('#disk-status');
+                
+                this.setupCanvas();
+                this.startSpinning();
+                this.render();
+            }
+            
+            renderHTML() {
+                return `
+                <div class="disk-view-container">
+                    <div class="disk-panel">
+                        <div class="disk-header">
+                            <span class="disk-icon">💾</span>
+                            <span class="disk-label">IBM 3330 - VOL=WORK01</span>
+                            <span class="disk-rpm">●</span>
+                        </div>
+                        <canvas id="disk-canvas" width="400" height="400"></canvas>
+                        <div id="disk-status" class="disk-status">
+                            <span class="status-cyl">CYL 000</span>
+                            <span class="status-trk">TRK 00</span>
+                            <span class="status-rec">REC 000</span>
+                        </div>
+                    </div>
+                    
+                    <div class="info-panel">
+                        <div class="record-panel">
+                            <div class="panel-header">📄 ENREGISTREMENT COURANT</div>
+                            <pre id="record-display" class="record-content">--- AUCUNE DONNÉE ---</pre>
+                        </div>
+                        
+                        <div class="timeline-panel">
+                            <div class="panel-header">📊 JOURNAL I/O</div>
+                            <div id="io-timeline" class="timeline-content"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <style>
+                    .disk-view-container {
+                        display: flex;
+                        gap: 20px;
+                        padding: 20px;
+                        background: #0a0a0a;
+                        border: 2px solid #00ff88;
+                        border-radius: 8px;
+                        font-family: 'IBM Plex Mono', 'Courier New', monospace;
+                    }
+                    
+                    @media (max-width: 800px) {
+                        .disk-view-container {
+                            flex-direction: column;
+                        }
+                    }
+                    
+                    .disk-panel {
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        background: #111;
+                        padding: 15px;
+                        border-radius: 8px;
+                        border: 1px solid #333;
+                    }
+                    
+                    .disk-header {
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                        margin-bottom: 10px;
+                        color: #00ff88;
+                        font-size: 14px;
+                    }
+                    
+                    .disk-icon { font-size: 20px; }
+                    
+                    .disk-rpm {
+                        color: #ff0;
+                        animation: blink 0.5s infinite;
+                    }
+                    
+                    @keyframes blink {
+                        50% { opacity: 0.3; }
+                    }
+                    
+                    #disk-canvas {
+                        background: radial-gradient(circle, #1a1a1a 0%, #0a0a0a 100%);
+                        border-radius: 50%;
+                        box-shadow: 
+                            0 0 20px rgba(0, 255, 136, 0.2),
+                            inset 0 0 60px rgba(0, 0, 0, 0.8);
+                    }
+                    
+                    .disk-status {
+                        display: flex;
+                        gap: 20px;
+                        margin-top: 10px;
+                        padding: 8px 15px;
+                        background: #000;
+                        border: 1px solid #00ff88;
+                        border-radius: 4px;
+                        font-size: 12px;
+                        color: #00ff88;
+                    }
+                    
+                    .info-panel {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 15px;
+                        flex: 1;
+                        min-width: 300px;
+                    }
+                    
+                    .record-panel, .timeline-panel {
+                        background: #111;
+                        border: 1px solid #333;
+                        border-radius: 8px;
+                        overflow: hidden;
+                    }
+                    
+                    .panel-header {
+                        background: #1a1a1a;
+                        padding: 8px 12px;
+                        color: #00ff88;
+                        font-size: 12px;
+                        border-bottom: 1px solid #333;
+                    }
+                    
+                    .record-content {
+                        margin: 0;
+                        padding: 12px;
+                        font-size: 10px;
+                        color: #0f0;
+                        background: #000;
+                        min-height: 100px;
+                        max-height: 180px;
+                        overflow-y: auto;
+                        white-space: pre-wrap;
+                        word-break: break-all;
+                    }
+                    
+                    .timeline-content {
+                        padding: 8px;
+                        max-height: 200px;
+                        overflow-y: auto;
+                        background: #000;
+                    }
+                    
+                    .io-entry {
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        padding: 6px 8px;
+                        margin-bottom: 4px;
+                        border-radius: 4px;
+                        font-size: 11px;
+                        background: #111;
+                        border-left: 3px solid #333;
+                        transition: background 0.2s;
+                    }
+                    
+                    .io-entry:hover { background: #1a1a1a; }
+                    .io-entry.read { border-left-color: #00ff88; }
+                    .io-entry.write { border-left-color: #ff6b6b; }
+                    .io-entry.open { border-left-color: #4ecdc4; }
+                    .io-entry.close { border-left-color: #ffe66d; }
+                    
+                    .io-op { font-weight: bold; width: 60px; }
+                    .io-op.read { color: #00ff88; }
+                    .io-op.write { color: #ff6b6b; }
+                    .io-op.open { color: #4ecdc4; }
+                    .io-op.close { color: #ffe66d; }
+                    
+                    .io-file { color: #888; }
+                    .io-rec { color: #aaa; }
+                    .io-line { color: #666; margin-left: auto; cursor: pointer; }
+                    .io-line:hover { color: #00ff88; }
+                    
+                    .flash-read { animation: flashGreen 0.3s ease-out; }
+                    .flash-write { animation: flashRed 0.3s ease-out; }
+                    
+                    @keyframes flashGreen {
+                        0% { box-shadow: 0 0 30px rgba(0, 255, 136, 0.8); }
+                        100% { box-shadow: 0 0 20px rgba(0, 255, 136, 0.2); }
+                    }
+                    
+                    @keyframes flashRed {
+                        0% { box-shadow: 0 0 30px rgba(255, 107, 107, 0.8); }
+                        100% { box-shadow: 0 0 20px rgba(0, 255, 136, 0.2); }
+                    }
+                </style>
+                `;
+            }
+            
+            setupCanvas() {
+                const dpr = window.devicePixelRatio || 1;
+                const rect = this.canvas.getBoundingClientRect();
+                this.canvas.width = rect.width * dpr;
+                this.canvas.height = rect.height * dpr;
+                this.ctx.scale(dpr, dpr);
+                this.canvas.style.width = rect.width + 'px';
+                this.canvas.style.height = rect.height + 'px';
+                
+                this.centerX = rect.width / 2;
+                this.centerY = rect.height / 2;
+            }
+            
+            startSpinning() {
+                this.isSpinning = true;
+                this.lastTime = performance.now();
+                this.animate();
+            }
+            
+            animate() {
+                if (!this.isSpinning) return;
+                
+                const now = performance.now();
+                const delta = now - this.lastTime;
+                this.lastTime = now;
+                
+                // Si on a une cible de seek, on tourne vers elle
+                if (this.targetDiskAngle !== undefined) {
+                    // Normaliser les angles
+                    let current = this.diskAngle % (Math.PI * 2);
+                    let target = this.targetDiskAngle % (Math.PI * 2);
+                    
+                    // Trouver le chemin le plus court
+                    let diff = target - current;
+                    if (diff > Math.PI) diff -= Math.PI * 2;
+                    if (diff < -Math.PI) diff += Math.PI * 2;
+                    
+                    // Rotation rapide vers la cible
+                    if (Math.abs(diff) > 0.02) {
+                        this.diskAngle += diff * 0.15;
+                    } else {
+                        this.diskAngle = this.targetDiskAngle;
+                        this.targetDiskAngle = undefined;
+                    }
+                } else {
+                    // Rotation libre continue
+                    this.diskAngle = (this.diskAngle || 0) + (delta / this.options.rotationSpeed) * Math.PI * 2;
+                }
+                
+                this.render();
+                requestAnimationFrame(() => this.animate());
+            }
+            
+            render() {
+                const ctx = this.ctx;
+                const { diskRadius, innerRadius, trackCount } = this.options;
+                
+                ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Platter
+                ctx.beginPath();
+                ctx.arc(this.centerX, this.centerY, diskRadius, 0, Math.PI * 2);
+                ctx.fillStyle = '#1a1a1a';
+                ctx.fill();
+                
+                // Tracks
+                const trackWidth = (diskRadius - innerRadius) / trackCount;
+                
+                for (let i = 0; i < trackCount; i++) {
+                    const radius = innerRadius + (i + 0.5) * trackWidth;
+                    
+                    ctx.beginPath();
+                    ctx.arc(this.centerX, this.centerY, radius, 0, Math.PI * 2);
+                    ctx.strokeStyle = '#2a2a2a';
+                    ctx.lineWidth = trackWidth - 2;
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.arc(this.centerX, this.centerY, radius, 0, Math.PI * 2);
+                    ctx.strokeStyle = '#333';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+                
+                // Datasets
+                this.datasets.forEach((dataset) => {
+                    this.drawDataset(ctx, dataset, trackWidth);
+                });
+                
+                // Center hub
+                ctx.beginPath();
+                ctx.arc(this.centerX, this.centerY, innerRadius, 0, Math.PI * 2);
+                ctx.fillStyle = '#333';
+                ctx.fill();
+                ctx.strokeStyle = '#444';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // Spindle
+                ctx.beginPath();
+                ctx.arc(this.centerX, this.centerY, 15, 0, Math.PI * 2);
+                ctx.fillStyle = '#555';
+                ctx.fill();
+                
+                // Rotation indicator
+                ctx.beginPath();
+                ctx.moveTo(this.centerX, this.centerY);
+                ctx.lineTo(
+                    this.centerX + Math.cos(this.diskAngle) * (innerRadius - 5),
+                    this.centerY + Math.sin(this.diskAngle) * (innerRadius - 5)
+                );
+                ctx.strokeStyle = '#00ff88';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // Head
+                this.drawHead(ctx, trackWidth);
+            }
+            
+            drawDataset(ctx, dataset, trackWidth) {
+                const { innerRadius } = this.options;
+                const radius = innerRadius + (dataset.track + 0.5) * trackWidth;
+                
+                const recordCount = dataset.records || 10;
+                const arcLength = Math.min(recordCount / 20, 0.8) * Math.PI * 2;
+                // Le dataset tourne avec le disque
+                const startAngle = (dataset.startAngle || 0) + this.diskAngle;
+                
+                ctx.beginPath();
+                ctx.arc(this.centerX, this.centerY, radius, startAngle, startAngle + arcLength);
+                ctx.strokeStyle = dataset.color;
+                ctx.lineWidth = trackWidth - 6;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+                
+                // Label (tourne avec le disque)
+                const labelAngle = startAngle + arcLength / 2;
+                const labelX = this.centerX + Math.cos(labelAngle) * radius;
+                const labelY = this.centerY + Math.sin(labelAngle) * radius;
+                
+                ctx.save();
+                ctx.translate(labelX, labelY);
+                ctx.rotate(labelAngle + Math.PI / 2);
+                ctx.fillStyle = '#000';
+                ctx.font = 'bold 9px IBM Plex Mono, monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(dataset.name.substring(0, 8), 0, 3);
+                ctx.restore();
+                
+                // Active record highlight (tourne aussi)
+                if (dataset.activeRecord !== undefined) {
+                    const recordAngle = startAngle + (dataset.activeRecord / Math.max(recordCount, 1)) * arcLength;
+                    ctx.beginPath();
+                    ctx.arc(
+                        this.centerX + Math.cos(recordAngle) * radius,
+                        this.centerY + Math.sin(recordAngle) * radius,
+                        5, 0, Math.PI * 2
+                    );
+                    ctx.fillStyle = dataset.flashColor || '#fff';
+                    ctx.fill();
+                }
+            }
+            
+            drawHead(ctx, trackWidth) {
+                const { innerRadius, diskRadius } = this.options;
+                const headRadius = innerRadius + (this.currentTrack + 0.5) * trackWidth;
+                
+                // La tête est FIXE à droite (angle = 0), seul le rayon change
+                const angle = 0;
+                
+                // Position de la tête sur la piste
+                const headX = this.centerX + headRadius;
+                const headY = this.centerY;
+                
+                // Bras de lecture (fixe, vient de l'extérieur droit)
+                ctx.beginPath();
+                ctx.moveTo(this.centerX + diskRadius + 40, this.centerY);
+                ctx.lineTo(headX + 10, headY);
+                ctx.strokeStyle = '#666';
+                ctx.lineWidth = 8;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+                
+                // Pivot du bras
+                ctx.beginPath();
+                ctx.arc(this.centerX + diskRadius + 40, this.centerY, 6, 0, Math.PI * 2);
+                ctx.fillStyle = '#555';
+                ctx.fill();
+                
+                // Tête de lecture
+                ctx.beginPath();
+                ctx.arc(headX, headY, 8, 0, Math.PI * 2);
+                ctx.fillStyle = this.headColor || '#888';
+                ctx.fill();
+                ctx.strokeStyle = '#aaa';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // Glow pendant I/O
+                if (this.headGlow) {
+                    ctx.beginPath();
+                    ctx.arc(headX, headY, 14, 0, Math.PI * 2);
+                    ctx.fillStyle = this.headGlow;
+                    ctx.globalAlpha = 0.5;
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                }
+            }
+            
+            // Calculer l'angle cible pour amener l'enregistrement sous la tête
+            seekToRecord(fileName, recordNumber) {
+                const dataset = this.datasets.get(fileName);
+                if (!dataset) return;
+                
+                const recordCount = Math.max(dataset.records || 10, 1);
+                const arcLength = Math.min(recordCount / 20, 0.8) * Math.PI * 2;
+                
+                // Position de l'enregistrement dans l'arc du dataset
+                const recordPosInArc = (recordNumber || 0) / recordCount * arcLength;
+                
+                // Angle absolu de l'enregistrement (sans rotation du disque)
+                const recordBaseAngle = dataset.startAngle + recordPosInArc;
+                
+                // On veut que cet enregistrement arrive à angle = 0 (sous la tête)
+                // Donc on ajuste diskAngle pour que recordBaseAngle + diskAngle = 0 (mod 2π)
+                // => diskAngle = -recordBaseAngle
+                this.targetDiskAngle = -recordBaseAngle;
+            }
+            
+            registerDataset(fileName, options = {}) {
+                if (this.datasets.has(fileName)) return;
+                
+                const track = this.datasets.size % this.options.trackCount;
+                const color = this.datasetColors[this.colorIndex++ % this.datasetColors.length];
+                
+                this.datasets.set(fileName, {
+                    name: fileName,
+                    track: track,
+                    color: color,
+                    startAngle: Math.random() * Math.PI * 2,
+                    records: options.records || 0,
+                    ...options
+                });
+                
+                this.render();
+            }
+            
+            onDiskIO(event) {
+                const { operation, fileName, record, recordNumber, cobolLine } = event;
+                
+                if (!this.datasets.has(fileName)) {
+                    this.registerDataset(fileName);
+                }
+                
+                const dataset = this.datasets.get(fileName);
+                
+                this.currentTrack = dataset.track;
+                this.currentRecord = recordNumber || 0;
+                
+                switch (operation) {
+                    case 'READ':
+                        this.flashRead(dataset, recordNumber);
+                        this.displayRecord(record, fileName, recordNumber);
+                        break;
+                    case 'WRITE':
+                        this.flashWrite(dataset, recordNumber);
+                        dataset.records = Math.max(dataset.records, (recordNumber || 0) + 1);
+                        this.displayRecord(record, fileName, recordNumber);
+                        break;
+                    case 'OPEN':
+                        this.flashOpen(dataset);
+                        break;
+                    case 'CLOSE':
+                        this.flashClose(dataset);
+                        break;
+                }
+                
+                this.updateStatus();
+                this.addToTimeline(event);
+                this.render();
+            }
+            
+            flashRead(dataset, recordNumber) {
+                dataset.activeRecord = recordNumber;
+                dataset.flashColor = '#00ff88';
+                this.headGlow = 'rgba(0, 255, 136, 0.6)';
+                this.headColor = '#00ff88';
+                this.canvas.classList.add('flash-read');
+                
+                // Faire tourner le disque pour amener l'enregistrement sous la tête
+                this.seekToRecord(dataset.name, recordNumber);
+                
+                setTimeout(() => {
+                    dataset.activeRecord = undefined;
+                    this.headGlow = null;
+                    this.headColor = '#888';
+                    this.canvas.classList.remove('flash-read');
+                    this.render();
+                }, 300);
+            }
+            
+            flashWrite(dataset, recordNumber) {
+                dataset.activeRecord = recordNumber;
+                dataset.flashColor = '#ff6b6b';
+                this.headGlow = 'rgba(255, 107, 107, 0.6)';
+                this.headColor = '#ff6b6b';
+                this.canvas.classList.add('flash-write');
+                
+                // Faire tourner le disque pour amener l'enregistrement sous la tête
+                this.seekToRecord(dataset.name, recordNumber);
+                
+                setTimeout(() => {
+                    dataset.activeRecord = undefined;
+                    this.headGlow = null;
+                    this.headColor = '#888';
+                    this.canvas.classList.remove('flash-write');
+                    this.render();
+                }, 300);
+            }
+            
+            flashOpen(dataset) {
+                this.headColor = '#4ecdc4';
+                // Positionner le début du dataset sous la tête
+                this.seekToRecord(dataset.name, 0);
+                setTimeout(() => { this.headColor = '#888'; this.render(); }, 200);
+            }
+            
+            flashClose(dataset) {
+                this.headColor = '#ffe66d';
+                setTimeout(() => { this.headColor = '#888'; this.render(); }, 200);
+            }
+            
+            displayRecord(record, fileName, recordNumber) {
+                if (!record) {
+                    this.recordDisplay.textContent = '--- AUCUNE DONNÉE ---';
+                    return;
+                }
+                
+                let output = `┌─ ${fileName} ─ REC #${String(recordNumber || 0).padStart(3, '0')} ─┐\n`;
+                output += '│' + '─'.repeat(48) + '│\n';
+                
+                if (typeof record === 'object') {
+                    for (const [key, value] of Object.entries(record)) {
+                        const line = `${key}: ${value}`;
+                        output += '│ ' + line.padEnd(47) + '│\n';
+                    }
+                } else {
+                    output += '│ ' + String(record).padEnd(47) + '│\n';
+                }
+                
+                output += '└' + '─'.repeat(48) + '┘';
+                this.recordDisplay.textContent = output;
+            }
+            
+            addToTimeline(event) {
+                const { operation, fileName, recordNumber, cobolLine } = event;
+                
+                const opClass = operation.toLowerCase();
+                const entry = document.createElement('div');
+                entry.className = `io-entry ${opClass}`;
+                entry.innerHTML = `
+                    <span class="io-op ${opClass}">${operation}</span>
+                    <span class="io-file">${fileName}</span>
+                    <span class="io-rec">${recordNumber !== undefined ? `#${recordNumber}` : ''}</span>
+                    <span class="io-line" data-line="${cobolLine}">L.${cobolLine || '?'}</span>
+                `;
+                
+                entry.querySelector('.io-line').addEventListener('click', () => {
+                    if (this.onLineClick && cobolLine) {
+                        this.onLineClick(cobolLine);
+                    }
+                });
+                
+                this.ioTimeline.insertBefore(entry, this.ioTimeline.firstChild);
+                
+                while (this.ioTimeline.children.length > 20) {
+                    this.ioTimeline.removeChild(this.ioTimeline.lastChild);
+                }
+            }
+            
+            updateStatus() {
+                const cyl = String(Math.floor(this.currentTrack / 2)).padStart(3, '0');
+                const trk = String(this.currentTrack % 2).padStart(2, '0');
+                const rec = String(this.currentRecord).padStart(3, '0');
+                
+                this.statusBar.innerHTML = `
+                    <span class="status-cyl">CYL ${cyl}</span>
+                    <span class="status-trk">TRK ${trk}</span>
+                    <span class="status-rec">REC ${rec}</span>
+                `;
+            }
+            
+            reset() {
+                this.datasets.clear();
+                this.ioLog = [];
+                this.currentTrack = 0;
+                this.currentRecord = 0;
+                this.colorIndex = 0;
+                this.ioTimeline.innerHTML = '';
+                this.recordDisplay.textContent = '--- AUCUNE DONNÉE ---';
+                this.updateStatus();
+                this.render();
+            }
+            
+            setLineClickHandler(callback) {
+                this.onLineClick = callback;
+            }
+        }
+        
+        // Initialize
+        const diskView = new DiskView('disk-container');
+        window.diskView = diskView;
+        
+        // Sample data
+        const sampleRecords = {
+            CLIENTS: [
+                { CLI_CODE: '001', CLI_NOM: 'DUPONT JEAN', CLI_VILLE: 'PARIS', CLI_SOLDE: '00015000' },
+                { CLI_CODE: '002', CLI_NOM: 'MARTIN MARIE', CLI_VILLE: 'LYON', CLI_SOLDE: '00023500' },
+                { CLI_CODE: '003', CLI_NOM: 'DURAND PIERRE', CLI_VILLE: 'MARSEILLE', CLI_SOLDE: '00008750' },
+                { CLI_CODE: '004', CLI_NOM: 'LEROY SOPHIE', CLI_VILLE: 'BORDEAUX', CLI_SOLDE: '00041200' },
+            ],
+            PRODUCTS: [
+                { PRD_CODE: 'A001', PRD_LIB: 'ORDINATEUR IBM', PRD_PRIX: '0125000', PRD_QTE: '0025' },
+                { PRD_CODE: 'A002', PRD_LIB: 'TERMINAL 3270', PRD_PRIX: '0045000', PRD_QTE: '0150' },
+                { PRD_CODE: 'A003', PRD_LIB: 'CARTE PERFOREE', PRD_PRIX: '0000050', PRD_QTE: '9999' },
+            ]
+        };
+        
+        let recordCounters = { CLIENTS: 0, PRODUCTS: 0 };
+        
+        // Demo functions
+        window.simulateOpen = function(fileName) {
+            diskView.onDiskIO({
+                operation: 'OPEN',
+                fileName: fileName,
+                cobolLine: 42
+            });
+            highlightLine(42);
+        };
+        
+        window.simulateRead = function(fileName) {
+            const records = sampleRecords[fileName];
+            const idx = recordCounters[fileName] % records.length;
+            recordCounters[fileName]++;
+            
+            diskView.onDiskIO({
+                operation: 'READ',
+                fileName: fileName,
+                record: records[idx],
+                recordNumber: idx + 1,
+                cobolLine: 48
+            });
+            highlightLine(48);
+        };
+        
+        window.simulateWrite = function(fileName) {
+            const idx = recordCounters[fileName];
+            recordCounters[fileName]++;
+            
+            const newRecord = fileName === 'CLIENTS' 
+                ? { CLI_CODE: String(idx + 10).padStart(3, '0'), CLI_NOM: 'NOUVEAU CLIENT', CLI_VILLE: 'NICE', CLI_SOLDE: '00000000' }
+                : { PRD_CODE: 'X' + String(idx).padStart(3, '0'), PRD_LIB: 'NOUVEAU PRODUIT', PRD_PRIX: '0000100', PRD_QTE: '0001' };
+            
+            diskView.onDiskIO({
+                operation: 'WRITE',
+                fileName: fileName,
+                record: newRecord,
+                recordNumber: idx + 1,
+                cobolLine: 55
+            });
+            highlightLine(55);
+        };
+        
+        window.simulateSequence = async function() {
+            const delay = ms => new Promise(r => setTimeout(r, ms));
+            
+            simulateOpen('CLIENTS');
+            await delay(500);
+            simulateOpen('PRODUCTS');
+            await delay(500);
+            
+            for (let i = 0; i < 4; i++) {
+                simulateRead('CLIENTS');
+                await delay(400);
+            }
+            
+            simulateWrite('CLIENTS');
+            await delay(500);
+            
+            for (let i = 0; i < 3; i++) {
+                simulateRead('PRODUCTS');
+                await delay(400);
+            }
+            
+            simulateWrite('PRODUCTS');
+        };
+        
+        // COBOL source display
+        const cobolSource = `
+       PROCEDURE DIVISION.
+       DEBUT.
+           OPEN INPUT F-CLIENTS
+           OPEN INPUT F-PRODUCTS
+           PERFORM TRAITEMENT-CLIENTS
+           PERFORM TRAITEMENT-PRODUCTS
+           CLOSE F-CLIENTS F-PRODUCTS
+           STOP RUN.
+       
+       TRAITEMENT-CLIENTS.
+           READ F-CLIENTS
+               AT END SET FIN-FICHIER TO TRUE
+               NOT AT END PERFORM AFFICHER-CLIENT
+           END-READ.
+       
+       AFFICHER-CLIENT.
+           DISPLAY "CLIENT: " CLI-NOM " - " CLI-VILLE
+           WRITE ENR-SORTIE FROM ENR-CLIENT.
+        `.trim().split('\n');
+        
+        const sourceContainer = document.getElementById('cobol-source');
+        cobolSource.forEach((line, idx) => {
+            const div = document.createElement('div');
+            div.className = 'code-line';
+            div.id = `line-${idx + 40}`;
+            div.innerHTML = `
+                <span class="line-num">${idx + 40}</span>
+                <span class="line-content">${highlightSyntax(line)}</span>
+            `;
+            sourceContainer.appendChild(div);
+        });
+        
+        function highlightSyntax(line) {
+            return line
+                .replace(/\b(PROCEDURE|DIVISION|OPEN|CLOSE|READ|WRITE|DISPLAY|PERFORM|STOP|RUN|AT|END|NOT|SET|TO|TRUE|FROM|INPUT|OUTPUT)\b/g, '<span class="keyword">$1</span>')
+                .replace(/"([^"]*)"/g, '<span class="string">"$1"</span>')
+                .replace(/\b(F-CLIENTS|F-PRODUCTS|CLI-NOM|CLI-VILLE|ENR-SORTIE|ENR-CLIENT|FIN-FICHIER)\b/g, '<span class="identifier">$1</span>');
+        }
+        
+        function highlightLine(lineNum) {
+            document.querySelectorAll('.line-content').forEach(el => el.classList.remove('highlight'));
+            const line = document.querySelector(`#line-${lineNum} .line-content`);
+            if (line) line.classList.add('highlight');
+        }
+        
+        // Line click handler
+        diskView.setLineClickHandler((line) => {
+            highlightLine(line);
+        });
+    </script>
+</body>
+</html>

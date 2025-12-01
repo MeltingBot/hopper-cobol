@@ -200,10 +200,18 @@
             <div class="console-panel">
                 <div class="panel-header">
                     <span class="panel-title">📟 Console I/O</span>
+                    <span class="panel-badge" id="terminalStatus">PRÊT</span>
                 </div>
-                <div class="terminal-output" id="terminalOutput"></div>
-                <div class="terminal-input-area">
-                    <input type="text" class="terminal-input" id="terminalInput" placeholder="Saisie..." disabled>
+                <div id="terminalScreen" class="terminal-output-wrapper">
+                    <div class="terminal-output" id="terminalOutput"></div>
+                </div>
+                <div class="terminal-input-area" id="terminalInputArea">
+                    <span class="terminal-prompt">READY&gt;</span>
+                    <input type="text" class="terminal-input" id="terminalInput" placeholder="" autocomplete="off" onkeypress="if(event.key==='Enter')submitTerminalInput()">
+                    <button class="terminal-send" onclick="submitTerminalInput()">ENTER</button>
+                </div>
+                <div class="terminal-footer">
+                    <button class="btn btn-print btn-small" onclick="printOutput()" title="Imprimer la sortie">🖨️ IMPRIMER</button>
                 </div>
             </div>
         </div>
@@ -320,29 +328,6 @@
             <div class="modal-buttons">
                 <button class="btn btn-success" onclick="saveRecord()">✓ Sauver</button>
                 <button class="btn btn-danger" onclick="closeModal('recordModal')">Annuler</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Terminal Execution Modal -->
-    <div class="modal-overlay" id="terminalModal">
-        <div class="modal terminal-modal">
-            <div class="terminal-header">
-                <span class="terminal-title">HOPPER 3270 TERMINAL</span>
-                <span class="terminal-program" id="terminalProgram">PROGRAM</span>
-                <span class="terminal-status" id="terminalStatus">RUNNING</span>
-            </div>
-            <div class="terminal-screen" id="terminalScreen">
-                <div class="terminal-output" id="terminalOutput"></div>
-            </div>
-            <div class="terminal-input-area" id="terminalInputArea">
-                <span class="terminal-prompt">READY&gt;</span>
-                <input type="text" id="terminalInput" placeholder="" autocomplete="off" onkeypress="if(event.key==='Enter')submitTerminalInput()">
-                <button class="terminal-send" onclick="submitTerminalInput()">ENTER</button>
-            </div>
-            <div class="terminal-footer">
-                <button class="btn btn-print btn-small" onclick="printOutput()" title="Imprimer la sortie">🖨️ IMPRIMER</button>
-                <button class="btn btn-danger btn-small" onclick="closeTerminal()">DÉCONNEXION</button>
             </div>
         </div>
     </div>
