@@ -3231,6 +3231,11 @@ export class Parser {
         if (this.check(TokenType.NUMBER)) {
             return new ASTNode(NodeType.LITERAL, { value: this.advance().value, dataType: 'number' });
         }
+        // LEVEL_NUMBER tokens (1-49, 66, 77, 88) can appear as numeric values in expressions
+        // when used in comparisons like "WS-LIGNE > 16"
+        if (this.check(TokenType.LEVEL_NUMBER)) {
+            return new ASTNode(NodeType.LITERAL, { value: this.advance().value, dataType: 'number' });
+        }
         if (this.check(TokenType.IDENTIFIER)) {
             const name = this.advance().value;
 

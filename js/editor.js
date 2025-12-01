@@ -90,17 +90,21 @@ function clearScreen() {
  */
 function eraseToEndOfScreen() {
     if (!screenBuffer) return;
-    const startRow = screenCursorLine - 1;
-    const startCol = screenCursorCol - 1;
+    const startRow = Math.max(0, Math.min(SCREEN_ROWS - 1, screenCursorLine - 1));
+    const startCol = Math.max(0, Math.min(SCREEN_COLS - 1, screenCursorCol - 1));
 
     // Erase rest of current line
-    for (let col = startCol; col < SCREEN_COLS; col++) {
-        screenBuffer[startRow][col] = { char: ' ', highlight: false, blink: false, reverse: false, underline: false, fgColor: null, bgColor: null };
+    if (screenBuffer[startRow]) {
+        for (let col = startCol; col < SCREEN_COLS; col++) {
+            screenBuffer[startRow][col] = { char: ' ', highlight: false, blink: false, reverse: false, underline: false, fgColor: null, bgColor: null };
+        }
     }
     // Erase all following lines
     for (let row = startRow + 1; row < SCREEN_ROWS; row++) {
-        for (let col = 0; col < SCREEN_COLS; col++) {
-            screenBuffer[row][col] = { char: ' ', highlight: false, blink: false, reverse: false, underline: false, fgColor: null, bgColor: null };
+        if (screenBuffer[row]) {
+            for (let col = 0; col < SCREEN_COLS; col++) {
+                screenBuffer[row][col] = { char: ' ', highlight: false, blink: false, reverse: false, underline: false, fgColor: null, bgColor: null };
+            }
         }
     }
 }
@@ -110,11 +114,13 @@ function eraseToEndOfScreen() {
  */
 function eraseToEndOfLine() {
     if (!screenBuffer) return;
-    const row = screenCursorLine - 1;
-    const startCol = screenCursorCol - 1;
+    const row = Math.max(0, Math.min(SCREEN_ROWS - 1, screenCursorLine - 1));
+    const startCol = Math.max(0, Math.min(SCREEN_COLS - 1, screenCursorCol - 1));
 
-    for (let col = startCol; col < SCREEN_COLS; col++) {
-        screenBuffer[row][col] = { char: ' ', highlight: false, blink: false, reverse: false, underline: false, fgColor: null, bgColor: null };
+    if (screenBuffer[row]) {
+        for (let col = startCol; col < SCREEN_COLS; col++) {
+            screenBuffer[row][col] = { char: ' ', highlight: false, blink: false, reverse: false, underline: false, fgColor: null, bgColor: null };
+        }
     }
 }
 
@@ -128,6 +134,12 @@ function writeToScreen(text, options = {}) {
     const col = options.column || screenCursorCol;
     const row = Math.max(0, Math.min(SCREEN_ROWS - 1, line - 1));
     let currentCol = Math.max(0, Math.min(SCREEN_COLS - 1, col - 1));
+
+    // Ensure row exists in buffer (defensive check)
+    if (!screenBuffer[row]) {
+        console.warn(`writeToScreen: row ${row} not in buffer, reinitializing`);
+        initScreenBuffer();
+    }
 
     for (let i = 0; i < text.length && currentCol < SCREEN_COLS; i++) {
         const ch = text[i];
