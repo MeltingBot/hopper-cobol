@@ -1472,6 +1472,9 @@ export function clearAll() {
     if (cardNavigator) cardNavigator.textContent = '0 / 0';
     if (compilerOutput) compilerOutput.innerHTML = '<div class="output-line info">█ COBOL Runtime</div><div class="output-line info">█ Prêt.</div>';
 
+    // Reset terminal and disk
+    resetTerminalAndDisk();
+
     setStatus('ok', 'PRÊT');
 }
 
