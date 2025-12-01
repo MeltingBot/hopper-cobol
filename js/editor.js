@@ -581,7 +581,7 @@ export function compileOnly() {
             },
             dataManager: window.dataManagerModule?.getFilesSync() || {},
             onDiskIO: async (event) => {
-                // Send I/O operations to disk view and terminal
+                // Send I/O operations to disk view only (I/O journal shown on disk panel)
                 if (window.diskView) {
                     window.diskView.onDiskIO(event);
 
@@ -601,11 +601,6 @@ export function compileOnly() {
                             console.error('Failed to get file count:', e);
                         }
                     }
-                }
-                if (window.terminalWrite) {
-                    const { operation, fileName, recordNumber } = event;
-                    const msg = `[${operation}] ${fileName}${recordNumber !== undefined ? ` #${recordNumber}` : ''}`;
-                    window.terminalWrite(msg, 'terminal-io');
                 }
             }
         });

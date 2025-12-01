@@ -1,13 +1,15 @@
 /**
  * DiskView - IBM 3330 Disk Drive Visualization
  * Visualise les opérations I/O COBOL sur un disque magnétique virtuel
+ * Basé sur disk-demo.html
  */
 
 export class DiskView {
     constructor(containerId, options = {}) {
         this.container = document.getElementById(containerId);
         if (!this.container) {
-            throw new Error(`Container ${containerId} not found`);
+            console.warn(`DiskView: Container ${containerId} not found`);
+            return;
         }
 
         this.options = {
@@ -36,6 +38,7 @@ export class DiskView {
     }
 
     init() {
+        if (!this.container) return;
         this.container.innerHTML = this.renderHTML();
         this.canvas = this.container.querySelector('#disk-canvas');
         this.ctx = this.canvas.getContext('2d');
@@ -77,10 +80,167 @@ export class DiskView {
                 </div>
             </div>
         </div>
+
+        <style>
+            .disk-view-container {
+                display: flex;
+                gap: 20px;
+                padding: 20px;
+                background: #0a0a0a;
+                border: 2px solid #00ff88;
+                border-radius: 8px;
+                font-family: 'IBM Plex Mono', 'Courier New', monospace;
+                height: 100%;
+                box-sizing: border-box;
+            }
+
+            @media (max-width: 800px) {
+                .disk-view-container {
+                    flex-direction: column;
+                }
+            }
+
+            .disk-view-container .disk-panel {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                background: #111;
+                padding: 15px;
+                border-radius: 8px;
+                border: 1px solid #333;
+            }
+
+            .disk-header {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 10px;
+                color: #00ff88;
+                font-size: 14px;
+            }
+
+            .disk-icon { font-size: 20px; }
+
+            .disk-rpm {
+                color: #ff0;
+                animation: diskBlink 0.5s infinite;
+            }
+
+            @keyframes diskBlink {
+                50% { opacity: 0.3; }
+            }
+
+            #disk-canvas {
+                background: radial-gradient(circle, #1a1a1a 0%, #0a0a0a 100%);
+                border-radius: 50%;
+                box-shadow:
+                    0 0 20px rgba(0, 255, 136, 0.2),
+                    inset 0 0 60px rgba(0, 0, 0, 0.8);
+            }
+
+            .disk-status {
+                display: flex;
+                gap: 20px;
+                margin-top: 10px;
+                padding: 8px 15px;
+                background: #000;
+                border: 1px solid #00ff88;
+                border-radius: 4px;
+                font-size: 12px;
+                color: #00ff88;
+            }
+
+            .disk-view-container .info-panel {
+                display: flex;
+                flex-direction: column;
+                gap: 15px;
+                flex: 1;
+                min-width: 300px;
+            }
+
+            .record-panel, .timeline-panel {
+                background: #111;
+                border: 1px solid #333;
+                border-radius: 8px;
+                overflow: hidden;
+            }
+
+            .disk-view-container .panel-header {
+                background: #1a1a1a;
+                padding: 8px 12px;
+                color: #00ff88;
+                font-size: 12px;
+                border-bottom: 1px solid #333;
+            }
+
+            .record-content {
+                margin: 0;
+                padding: 12px;
+                font-size: 10px;
+                color: #0f0;
+                background: #000;
+                min-height: 100px;
+                max-height: 180px;
+                overflow-y: auto;
+                white-space: pre-wrap;
+                word-break: break-all;
+            }
+
+            .timeline-content {
+                padding: 8px;
+                max-height: 200px;
+                overflow-y: auto;
+                background: #000;
+            }
+
+            .io-entry {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 8px;
+                margin-bottom: 4px;
+                border-radius: 4px;
+                font-size: 11px;
+                background: #111;
+                border-left: 3px solid #333;
+                transition: background 0.2s;
+            }
+
+            .io-entry:hover { background: #1a1a1a; }
+            .io-entry.read { border-left-color: #00ff88; }
+            .io-entry.write { border-left-color: #ff6b6b; }
+            .io-entry.open { border-left-color: #4ecdc4; }
+            .io-entry.close { border-left-color: #ffe66d; }
+
+            .io-op { font-weight: bold; width: 60px; }
+            .io-op.read { color: #00ff88; }
+            .io-op.write { color: #ff6b6b; }
+            .io-op.open { color: #4ecdc4; }
+            .io-op.close { color: #ffe66d; }
+
+            .io-file { color: #888; }
+            .io-rec { color: #aaa; }
+            .io-line { color: #666; margin-left: auto; cursor: pointer; }
+            .io-line:hover { color: #00ff88; }
+
+            .flash-read { animation: flashGreen 0.3s ease-out; }
+            .flash-write { animation: flashRed 0.3s ease-out; }
+
+            @keyframes flashGreen {
+                0% { box-shadow: 0 0 30px rgba(0, 255, 136, 0.8); }
+                100% { box-shadow: 0 0 20px rgba(0, 255, 136, 0.2); }
+            }
+
+            @keyframes flashRed {
+                0% { box-shadow: 0 0 30px rgba(255, 107, 107, 0.8); }
+                100% { box-shadow: 0 0 20px rgba(0, 255, 136, 0.2); }
+            }
+        </style>
         `;
     }
 
     setupCanvas() {
+        if (!this.canvas) return;
         const dpr = window.devicePixelRatio || 1;
         const rect = this.canvas.getBoundingClientRect();
         this.canvas.width = rect.width * dpr;
@@ -131,6 +291,7 @@ export class DiskView {
     }
 
     render() {
+        if (!this.ctx) return;
         const ctx = this.ctx;
         const { diskRadius, innerRadius, trackCount } = this.options;
 
@@ -304,7 +465,7 @@ export class DiskView {
             track: track,
             color: color,
             startAngle: Math.random() * Math.PI * 2,
-            records: options.records || 0,
+            records: options.records || 10, // Default to 10 for visibility
             ...options
         });
 
@@ -312,6 +473,7 @@ export class DiskView {
     }
 
     onDiskIO(event) {
+        if (!this.container) return;
         const { operation, fileName, record, recordNumber, cobolLine } = event;
 
         if (!this.datasets.has(fileName)) {
@@ -350,7 +512,7 @@ export class DiskView {
         dataset.flashColor = '#00ff88';
         this.headGlow = 'rgba(0, 255, 136, 0.6)';
         this.headColor = '#00ff88';
-        this.canvas.classList.add('flash-read');
+        if (this.canvas) this.canvas.classList.add('flash-read');
 
         this.seekToRecord(dataset.name, recordNumber);
 
@@ -358,7 +520,7 @@ export class DiskView {
             dataset.activeRecord = undefined;
             this.headGlow = null;
             this.headColor = '#888';
-            this.canvas.classList.remove('flash-read');
+            if (this.canvas) this.canvas.classList.remove('flash-read');
             this.render();
         }, 300);
     }
@@ -368,7 +530,7 @@ export class DiskView {
         dataset.flashColor = '#ff6b6b';
         this.headGlow = 'rgba(255, 107, 107, 0.6)';
         this.headColor = '#ff6b6b';
-        this.canvas.classList.add('flash-write');
+        if (this.canvas) this.canvas.classList.add('flash-write');
 
         this.seekToRecord(dataset.name, recordNumber);
 
@@ -376,7 +538,7 @@ export class DiskView {
             dataset.activeRecord = undefined;
             this.headGlow = null;
             this.headColor = '#888';
-            this.canvas.classList.remove('flash-write');
+            if (this.canvas) this.canvas.classList.remove('flash-write');
             this.render();
         }, 300);
     }
@@ -393,6 +555,7 @@ export class DiskView {
     }
 
     displayRecord(record, fileName, recordNumber) {
+        if (!this.recordDisplay) return;
         if (!record) {
             this.recordDisplay.textContent = '--- AUCUNE DONNÉE ---';
             return;
@@ -415,6 +578,7 @@ export class DiskView {
     }
 
     addToTimeline(event) {
+        if (!this.ioTimeline) return;
         const { operation, fileName, recordNumber, cobolLine } = event;
 
         const opClass = operation.toLowerCase();
@@ -441,6 +605,7 @@ export class DiskView {
     }
 
     updateStatus() {
+        if (!this.statusBar) return;
         const cyl = String(Math.floor(this.currentTrack / 2)).padStart(3, '0');
         const trk = String(this.currentTrack % 2).padStart(2, '0');
         const rec = String(this.currentRecord).padStart(3, '0');
@@ -458,8 +623,8 @@ export class DiskView {
         this.currentTrack = 0;
         this.currentRecord = 0;
         this.colorIndex = 0;
-        this.ioTimeline.innerHTML = '';
-        this.recordDisplay.textContent = '--- AUCUNE DONNÉE ---';
+        if (this.ioTimeline) this.ioTimeline.innerHTML = '';
+        if (this.recordDisplay) this.recordDisplay.textContent = '--- AUCUNE DONNÉE ---';
         this.updateStatus();
         this.render();
     }

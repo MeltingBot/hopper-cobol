@@ -1933,13 +1933,22 @@ body.debug-active .debug-panel {
 }
 
 .terminal-input-area {
-    padding: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 15px;
     background: #1a1a1a;
     border-top: 1px solid #333;
 }
 
+.terminal-input-area .terminal-prompt {
+    color: #ffe66d;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
 .terminal-input {
-    width: 100%;
+    flex: 1;
     padding: 8px 12px;
     background: #000;
     border: 1px solid var(--phosphor-green);
@@ -1957,6 +1966,39 @@ body.debug-active .debug-panel {
 .terminal-input:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+.terminal-send {
+    padding: 8px 16px;
+    background: var(--phosphor-green);
+    border: none;
+    border-radius: 4px;
+    color: #000;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: bold;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.terminal-send:hover {
+    background: #00ff99;
+    box-shadow: 0 0 10px var(--phosphor-glow);
+}
+
+.terminal-footer {
+    padding: 10px 15px;
+    background: #111;
+    border-top: 1px solid #333;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.terminal-output-wrapper {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .terminal-header {
