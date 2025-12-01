@@ -788,8 +788,8 @@ export class DiskView {
         if (!this.container) return;
         const { operation, fileName, record, recordNumber, cobolLine } = event;
 
-        // Spin the disk for I/O operation
-        this.spinFor(400);
+        // Spin the disk for I/O operation (IBM 3330 avg access time: 160ms)
+        this.spinFor(160);
 
         if (!this.datasets.has(fileName)) {
             this.registerDataset(fileName);
