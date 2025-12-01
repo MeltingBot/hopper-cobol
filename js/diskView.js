@@ -126,6 +126,11 @@ export class DiskView {
             .disk-icon { font-size: 20px; }
 
             .disk-rpm {
+                color: #444;
+                transition: color 0.2s;
+            }
+
+            .disk-rpm.spinning {
                 color: #ff0;
                 animation: diskBlink 0.5s infinite;
             }
@@ -266,12 +271,18 @@ export class DiskView {
         if (this.isSpinning) return;
         this.isSpinning = true;
         this.lastTime = performance.now();
+        // Show spinning indicator
+        const rpmIndicator = this.container?.querySelector('.disk-rpm');
+        if (rpmIndicator) rpmIndicator.classList.add('spinning');
         this.animate();
     }
 
     stopSpinning() {
         this.isSpinning = false;
         this.spinStopTime = undefined;
+        // Hide spinning indicator
+        const rpmIndicator = this.container?.querySelector('.disk-rpm');
+        if (rpmIndicator) rpmIndicator.classList.remove('spinning');
     }
 
     /**
@@ -294,8 +305,7 @@ export class DiskView {
         if (this.spinStopTime && now >= this.spinStopTime) {
             // If we have a target angle, finish the seek first
             if (this.targetDiskAngle === undefined) {
-                this.isSpinning = false;
-                this.spinStopTime = undefined;
+                this.stopSpinning();
                 return;
             }
         }
@@ -316,15 +326,14 @@ export class DiskView {
                 this.targetDiskAngle = undefined;
                 // Stop spinning after reaching target if no spinStopTime or time elapsed
                 if (!this.spinStopTime || now >= this.spinStopTime) {
-                    this.isSpinning = false;
-                    this.spinStopTime = undefined;
+                    this.stopSpinning();
                     this.render();
                     return;
                 }
             }
         } else if (!this.spinStopTime) {
             // No target and no timed spin - stop
-            this.isSpinning = false;
+            this.stopSpinning();
             return;
         } else {
             // Timed rotation without target
