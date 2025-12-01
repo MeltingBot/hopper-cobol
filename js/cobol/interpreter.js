@@ -1567,8 +1567,8 @@ class Runtime {
         if (this.callbacks.onDisplayWithOptions) {
             this.callbacks.onDisplayWithOptions(message, options);
         } else if (this.callbacks.onDisplay) {
-            // Fallback to simple display if screen control not supported
-            this.callbacks.onDisplay(message);
+            // Fallback to simple display, passing options as second parameter
+            this.callbacks.onDisplay(message, options);
         }
     }
 
@@ -2217,10 +2217,23 @@ export class Interpreter {
             stmt.foregroundColor !== null || stmt.backgroundColor !== null;
 
         if (hasScreenControl) {
+            // Evaluate LINE and COLUMN if they are variable names
+            let lineVal = stmt.line;
+            let colVal = stmt.column;
+
+            // If line is a string (variable name), get its value
+            if (typeof lineVal === 'string') {
+                lineVal = parseInt(this.runtime.getValue(lineVal)) || lineVal;
+            }
+            // If column is a string (variable name), get its value
+            if (typeof colVal === 'string') {
+                colVal = parseInt(this.runtime.getValue(colVal)) || colVal;
+            }
+
             // Pass screen control options to runtime
             this.runtime.displayWithOptions(message, {
-                line: stmt.line,
-                column: stmt.column,
+                line: lineVal,
+                column: colVal,
                 erase: stmt.erase,
                 highlight: stmt.highlight,
                 blink: stmt.blink,
@@ -2247,9 +2260,20 @@ export class Interpreter {
             stmt.foregroundColor !== null || stmt.backgroundColor !== null;
 
         if (hasScreenControl) {
+            // Evaluate LINE and COLUMN if they are variable names
+            let lineVal = stmt.line;
+            let colVal = stmt.column;
+
+            if (typeof lineVal === 'string') {
+                lineVal = parseInt(this.runtime.getValue(lineVal)) || lineVal;
+            }
+            if (typeof colVal === 'string') {
+                colVal = parseInt(this.runtime.getValue(colVal)) || colVal;
+            }
+
             const options = {
-                line: stmt.line,
-                column: stmt.column,
+                line: lineVal,
+                column: colVal,
                 highlight: stmt.highlight || false,
                 blink: stmt.blink || false,
                 reverseVideo: stmt.reverseVideo || false,
