@@ -1565,6 +1565,37 @@ export function setCode(code) {
         codeEditor.value = code;
         updateLineNumbers();
     }
+
+    // Reset terminal and disk when loading new program
+    resetTerminalAndDisk();
+}
+
+/**
+ * Reset terminal output and disk visualization
+ */
+function resetTerminalAndDisk() {
+    // Clear terminal output
+    const terminalOutput = document.getElementById('terminalOutput');
+    if (terminalOutput) {
+        terminalOutput.innerHTML = '';
+    }
+
+    // Reset terminal status
+    const statusEl = document.getElementById('terminalStatus');
+    if (statusEl) {
+        statusEl.textContent = 'READY';
+        statusEl.className = 'panel-badge';
+    }
+
+    // Reset disk view
+    if (window.diskView) {
+        window.diskView.reset();
+    }
+
+    // Reset workflow state
+    isPunched = false;
+    isCompiled = false;
+    cards = [];
 }
 
 /**
