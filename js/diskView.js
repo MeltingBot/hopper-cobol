@@ -52,8 +52,7 @@ export class DiskView {
         this.statusBar = this.container.querySelector('#disk-status');
 
         this.setupCanvas();
-        this.startSpinning();
-        this.render();
+        this.render();  // Initial render without spinning
     }
 
     renderHTML() {
@@ -264,9 +263,24 @@ export class DiskView {
     }
 
     startSpinning() {
+        if (this.isSpinning) return;
         this.isSpinning = true;
         this.lastTime = performance.now();
         this.animate();
+    }
+
+    stopSpinning() {
+        this.isSpinning = false;
+        this.spinStopTime = undefined;
+    }
+
+    /**
+     * Spin the disk for a specific duration (for I/O operations)
+     * @param {number} duration - Duration in ms
+     */
+    spinFor(duration = 500) {
+        this.spinStopTime = performance.now() + duration;
+        this.startSpinning();
     }
 
     animate() {
@@ -275,6 +289,16 @@ export class DiskView {
         const now = performance.now();
         const delta = now - this.lastTime;
         this.lastTime = now;
+
+        // Check if we should stop spinning (timed spin)
+        if (this.spinStopTime && now >= this.spinStopTime) {
+            // If we have a target angle, finish the seek first
+            if (this.targetDiskAngle === undefined) {
+                this.isSpinning = false;
+                this.spinStopTime = undefined;
+                return;
+            }
+        }
 
         // Si on a une cible de seek, on tourne vers elle
         if (this.targetDiskAngle !== undefined) {
@@ -290,9 +314,20 @@ export class DiskView {
             } else {
                 this.diskAngle = this.targetDiskAngle;
                 this.targetDiskAngle = undefined;
+                // Stop spinning after reaching target if no spinStopTime or time elapsed
+                if (!this.spinStopTime || now >= this.spinStopTime) {
+                    this.isSpinning = false;
+                    this.spinStopTime = undefined;
+                    this.render();
+                    return;
+                }
             }
+        } else if (!this.spinStopTime) {
+            // No target and no timed spin - stop
+            this.isSpinning = false;
+            return;
         } else {
-            // Rotation libre continue
+            // Timed rotation without target
             this.diskAngle = (this.diskAngle || 0) + (delta / this.options.rotationSpeed) * Math.PI * 2;
         }
 
@@ -752,6 +787,9 @@ export class DiskView {
     onDiskIO(event) {
         if (!this.container) return;
         const { operation, fileName, record, recordNumber, cobolLine } = event;
+
+        // Spin the disk for I/O operation
+        this.spinFor(400);
 
         if (!this.datasets.has(fileName)) {
             this.registerDataset(fileName);
