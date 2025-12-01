@@ -359,13 +359,17 @@ function createPrinterModal() {
             <head>
                 <title>Impression COBOL</title>
                 <style>
-                    body { font-family: monospace; background: white; }
+                    body { font-family: monospace; background: white; color: #000; }
                     .printer-page { page-break-after: always; }
                     .tractor-feed { display: none; }
                     .paper-content { padding: 10mm; }
-                    .print-line { font-family: 'Courier New', monospace; font-size: 10pt; }
+                    .print-line { font-family: 'Courier New', monospace; font-size: 10pt; display: flex; }
                     .green-bar { background: #e8f5e9; }
                     .line-number { color: #999; margin-right: 10px; }
+                    .line-text { color: #000; white-space: pre; }
+                    .line-text.reverse { background: #000; color: #fff; padding: 0 2px; }
+                    .line-text.bold { font-weight: bold; }
+                    .line-text.underline { text-decoration: underline; }
                     .page-header, .page-footer { margin: 5mm 0; font-weight: bold; }
                 </style>
             </head>
@@ -433,7 +437,7 @@ export function stopPrinting() {
 /**
  * Convenience function to print compilation output
  * @param {string} programId - Program identifier
- * @param {string[]} outputs - Array of output lines
+ * @param {Array<string|{text: string, options: object}>} outputs - Array of output lines (string or object with options)
  */
 export function printCompilationOutput(programId, outputs) {
     initPrinter();
@@ -449,7 +453,17 @@ export function printCompilationOutput(programId, outputs) {
 
     // Program output
     for (const line of outputs) {
-        printLine('   ' + line);
+        if (typeof line === 'object' && line.text !== undefined) {
+            // Line with options (reverse, bold, etc.)
+            const options = {};
+            if (line.options?.reverseVideo) options.reverse = true;
+            if (line.options?.highlight) options.bold = true;
+            if (line.options?.underline) options.underline = true;
+            printLine('   ' + line.text, options);
+        } else {
+            // Simple string line
+            printLine('   ' + line);
+        }
     }
 
     // Footer section

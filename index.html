@@ -207,7 +207,7 @@
                 </div>
                 <div class="terminal-input-area" id="terminalInputArea">
                     <span class="terminal-prompt">READY&gt;</span>
-                    <input type="text" class="terminal-input" id="terminalInput" placeholder="" autocomplete="off" onkeypress="if(event.key==='Enter')submitTerminalInput()">
+                    <input type="text" class="terminal-input" id="terminalInput" placeholder="" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();submitTerminalInput()}">
                     <button class="terminal-send" onclick="submitTerminalInput()">ENTER</button>
                 </div>
                 <div class="terminal-footer">

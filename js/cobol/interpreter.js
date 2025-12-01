@@ -1679,6 +1679,18 @@ export class Interpreter {
         this.stepResolve = null;
         this.currentStatement = null;
         this.onStep = options.callbacks?.onStep || null; // Callback for step notification
+
+        // I/O delay simulation (ms) - simulates vintage disk access times
+        this.ioDelay = options.ioDelay ?? 50; // Default 50ms per I/O operation
+    }
+
+    /**
+     * Simulate vintage disk I/O delay
+     */
+    async simulateIODelay() {
+        if (this.ioDelay > 0) {
+            await new Promise(resolve => setTimeout(resolve, this.ioDelay));
+        }
     }
 
     /**
@@ -2657,9 +2669,8 @@ export class Interpreter {
         } else if (stmt.next) {
             // READ NEXT - sequential read
             result = await file.read();
-        } else if (file.organization === 'INDEXED' && file.recordKey) {
-            // For indexed files without explicit key, use the record key field value
-            // Keep the original name format (with hyphens) for variable lookup
+        } else if (file.organization === 'INDEXED' && file.accessMode === 'DYNAMIC' && file.mode === 'I-O') {
+            // For indexed files in I-O mode with DYNAMIC access, use key lookup
             const keyField = file.recordKey.toUpperCase();
             const keyValue = this.runtime.getValue(keyField);
             if (keyValue && keyValue.toString().trim()) {
@@ -2672,7 +2683,7 @@ export class Interpreter {
             const recordNum = parseInt(this.runtime.getValue(file.relativeKey)) || 1;
             result = await file.readRelative(recordNum);
         } else {
-            // Sequential read
+            // Sequential read (INPUT mode or no key)
             result = await file.read();
         }
 
@@ -2692,6 +2703,9 @@ export class Interpreter {
                     cobolLine: stmt.lineNumber
                 });
             }
+
+            // Simulate vintage disk access time
+            await this.simulateIODelay();
 
             // Execute NOT AT END / NOT INVALID KEY statements
             if (stmt.notAtEnd && stmt.notAtEnd.length > 0) {
@@ -2808,6 +2822,9 @@ export class Interpreter {
             });
         }
 
+        // Simulate vintage disk access time
+        await this.simulateIODelay();
+
         // Refresh data manager UI in real-time
         if (typeof window !== 'undefined' && window.dataManagerModule?.renderFileList) {
             window.dataManagerModule.renderFileList();
@@ -2876,7 +2893,20 @@ export class Interpreter {
             }
         }
 
-        await targetFile.rewrite(record);
+        const result = await targetFile.rewrite(record);
+
+        // Notify disk I/O
+        if (this.runtime.callbacks.onDiskIO) {
+            this.runtime.callbacks.onDiskIO({
+                operation: 'REWRITE',
+                fileName: targetFile.name,
+                record: record,
+                cobolLine: stmt.lineNumber
+            });
+        }
+
+        // Simulate vintage disk access time
+        await this.simulateIODelay();
     }
 
     /**
@@ -2886,8 +2916,27 @@ export class Interpreter {
         const file = this.runtime.getFile(stmt.file);
         if (!file) return;
 
+        // Get key value before delete for notification
+        const keyField = file.recordKey?.toUpperCase();
+        const keyValue = keyField ? this.runtime.getValue(keyField) : null;
+
         const result = await file.delete();
         const success = result?.success;
+
+        // Notify disk I/O
+        if (this.runtime.callbacks.onDiskIO && success) {
+            this.runtime.callbacks.onDiskIO({
+                operation: 'DELETE',
+                fileName: stmt.file,
+                recordNumber: keyValue,
+                keyValue: keyValue,
+                cobolLine: stmt.lineNumber
+            });
+        }
+
+        // Simulate vintage disk access time
+        await this.simulateIODelay();
+
         if (!success && stmt.invalidKey) {
             for (const s of stmt.invalidKey) {
                 await this.executeStatement(s);
@@ -3209,6 +3258,12 @@ export class Interpreter {
                 return expr.value;
 
             case NodeType.IDENTIFIER:
+                // For numeric variables, return the numeric value (with proper decimal handling)
+                // For alphanumeric variables, return the raw string value
+                const variable = this.runtime.getVariable(expr.name);
+                if (variable && variable.picInfo && variable.picInfo.type === 'numeric') {
+                    return variable.getNumericValue();
+                }
                 return this.runtime.getValue(expr.name) || '';
 
             case NodeType.SUBSCRIPT:
@@ -3255,7 +3310,10 @@ export class Interpreter {
         // Find all OCCURS levels from baseVar up to root
         const occursChain = this.findOccursChain(baseVar);
         if (occursChain.length === 0) {
-            // No OCCURS found - just return the value
+            // No OCCURS found - return appropriate value type
+            if (baseVar.picInfo && baseVar.picInfo.type === 'numeric') {
+                return baseVar.getNumericValue();
+            }
             return baseVar.getValue();
         }
 
@@ -3289,7 +3347,19 @@ export class Interpreter {
 
         // Return the extracted value
         const len = baseVar.getTotalLength();
-        return fullStorage.substring(offset, offset + len);
+        const rawValue = fullStorage.substring(offset, offset + len);
+
+        // For numeric variables, convert to proper numeric value
+        if (baseVar.picInfo && baseVar.picInfo.type === 'numeric' && baseVar.picInfo.decimals > 0) {
+            const val = rawValue.trim();
+            const intPart = val.substring(0, val.length - baseVar.picInfo.decimals);
+            const decPart = val.substring(val.length - baseVar.picInfo.decimals);
+            let result = parseFloat(intPart + '.' + decPart) || 0;
+            // Apply sign for signed numeric variables (but subscripted elements don't track sign individually)
+            return result;
+        }
+
+        return rawValue;
     }
 
     /**

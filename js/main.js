@@ -173,38 +173,11 @@ function initTerminalConsole() {
         terminalOutput.innerHTML = '';
     };
 
-    // Handle terminal input
-    terminalInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && terminalInput.value.trim()) {
-            const value = terminalInput.value;
-            window.terminalWrite(`> ${value}`, 'terminal-echo');
-
-            // Resolve pending ACCEPT if any
-            if (window.terminalInputResolver) {
-                window.terminalInputResolver(value);
-                window.terminalInputResolver = null;
-                terminalInput.disabled = true;
-            }
-
-            terminalInput.value = '';
-        }
-    });
-
-    // Function to request input (for COBOL ACCEPT)
-    window.terminalAccept = (varName) => {
-        return new Promise((resolve) => {
-            window.terminalWrite(`ACCEPT ${varName}:`, 'terminal-prompt');
-            terminalInput.disabled = false;
-            terminalInput.focus();
-            window.terminalInputResolver = resolve;
-        });
-    };
+    // Handle terminal input - delegate to submitTerminalInput from editor.js
+    // The onkeypress handler in HTML calls submitTerminalInput() directly
 
     // Welcome message
-    window.terminalWrite('═══════════════════════════════════════', 'terminal-header');
-    window.terminalWrite('   IBM 3330 DISK EMULATOR - HOPPER', 'terminal-header');
-    window.terminalWrite('═══════════════════════════════════════', 'terminal-header');
-    window.terminalWrite('');
+    window.terminalWrite('HOPPER - READY', 'terminal-header');
 }
 
 /**

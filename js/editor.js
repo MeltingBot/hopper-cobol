@@ -535,15 +535,11 @@ export function compileOnly() {
                 terminalOutput(msg);
                 showOutput('output', msg); // Also show in main console
                 programOutputBuffer.push(msg); // Store for printer
-                // Also send to terminal tab
-                if (window.terminalWrite) {
-                    window.terminalWrite(msg);
-                }
             },
             onDisplayWithOptions: (msg, options) => {
                 terminalOutputWithOptions(msg, options);
                 showOutput('output', msg); // Also show in main console
-                programOutputBuffer.push(msg); // Store for printer
+                programOutputBuffer.push({ text: msg, options }); // Store for printer with options
             },
             onAccept: (varName) => {
                 // In screen mode, don't display "ACCEPT varName:" text on screen
@@ -588,12 +584,15 @@ export function compileOnly() {
                     // For OPEN operations, get current record count from dataManager
                     if (event.operation === 'OPEN' && window.dataManagerModule) {
                         try {
-                            const files = await window.dataManagerModule.getFiles();
-                            const file = files.find(f => f.name.toUpperCase() === event.fileName.toUpperCase());
-                            if (file) {
+                            const filesObj = await window.dataManagerModule.getFiles();
+                            const fileName = event.fileName.toUpperCase();
+                            if (filesObj[fileName]) {
                                 const dataset = window.diskView.datasets.get(event.fileName);
                                 if (dataset) {
-                                    dataset.records = file.records?.length || 0;
+                                    const recordCount = filesObj[fileName].records?.length || 0;
+                                    if (recordCount > 0) {
+                                        window.diskView.expandDataset(event.fileName, recordCount);
+                                    }
                                     window.diskView.render();
                                 }
                             }
@@ -940,11 +939,6 @@ function terminalOutputWithOptions(msg, options) {
  * Shows input field at specified screen position
  */
 function terminalAcceptWithOptions(varName, options) {
-    const modal = document.getElementById('terminalModal');
-
-    // Only if terminal is open
-    if (!modal?.classList.contains('active')) return;
-
     // Enable screen mode if not already enabled
     if (!screenModeEnabled) {
         initScreenBuffer();

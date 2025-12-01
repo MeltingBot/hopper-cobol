@@ -23,6 +23,16 @@ export function switchTab(tabName, button) {
     if (tabContent) {
         tabContent.classList.add('active');
     }
+
+    // Reinitialize diskView canvas when switching to Terminal tab
+    // (canvas dimensions are 0 when tab is hidden)
+    if (tabName === 'terminal' && window.diskView) {
+        // Use requestAnimationFrame to ensure DOM is updated
+        requestAnimationFrame(() => {
+            window.diskView.setupCanvas();
+            window.diskView.render();
+        });
+    }
 }
 
 /**

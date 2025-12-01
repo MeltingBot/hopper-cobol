@@ -100,8 +100,6 @@ export async function renderFileList() {
     if (!list) return;
 
     const files = await storage.listFiles();
-    console.log('[DATA] renderFileList - files:', files);
-
 
     if (files.length === 0) {
         list.innerHTML = '<div class="no-files">Aucun fichier. Créez-en un ou exécutez un programme.</div>';
@@ -141,8 +139,6 @@ async function renderRecords(fileName) {
     const schemaContainer = document.getElementById('recordSchema');
     const listContainer = document.getElementById('recordList');
 
-    console.log('[DATA] renderRecords for:', fileName);
-
     if (!fileName) {
         if (schemaContainer) schemaContainer.innerHTML = 'Sélectionnez un fichier';
         if (listContainer) listContainer.innerHTML = '';
@@ -151,7 +147,6 @@ async function renderRecords(fileName) {
 
     const meta = await storage.getFileMetadata(fileName);
     const records = await storage.readAllRecords(fileName);
-    console.log('[DATA] records:', records);
 
     // Update schema display
     if (schemaContainer) {

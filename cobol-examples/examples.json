@@ -1,5 +1,12 @@
 [
   {
+    "id": "demo-disque",
+    "title": "Demo Disque I/O",
+    "category": "DEMO",
+    "description": "Démonstration des opérations disque: écriture séquentielle, lecture, accès aléatoire, mise à jour, suppression. Observez l'activité du disque HOPPER 33XX!",
+    "file": "disk-demo.cob"
+  },
+  {
     "id": "demo-sous-programmes",
     "title": "Demo CALL/COPY",
     "category": "DEMO",

@@ -338,16 +338,23 @@ export async function writeRecord(fileName, record) {
     return new Promise((resolve, reject) => {
         const tx = db.transaction(storeName, 'readwrite');
         const store = tx.objectStore(storeName);
-        const request = store.add(record);
 
-        request.onsuccess = () => resolve({ success: true });
-        request.onerror = () => {
-            if (request.error.name === 'ConstraintError') {
-                resolve({ success: false, invalidKey: true, message: 'Duplicate key' });
-            } else {
-                reject(request.error);
-            }
+        // First count existing records to get the record number
+        const countRequest = store.count();
+        countRequest.onsuccess = () => {
+            const recordNumber = countRequest.result;
+            const addRequest = store.add(record);
+
+            addRequest.onsuccess = () => resolve({ success: true, recordNumber: recordNumber });
+            addRequest.onerror = () => {
+                if (addRequest.error.name === 'ConstraintError') {
+                    resolve({ success: false, invalidKey: true, message: 'Duplicate key' });
+                } else {
+                    reject(addRequest.error);
+                }
+            };
         };
+        countRequest.onerror = () => reject(countRequest.error);
     });
 }
 

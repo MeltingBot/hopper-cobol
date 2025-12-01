@@ -16,7 +16,9 @@ export class DiskView {
             diskRadius: 180,
             innerRadius: 40,
             trackCount: 8,
+            sectorsPerTrack: 20,  // Capacité max par piste
             rotationSpeed: 3000,
+            maxRecordsPerFile: 40, // Rotation automatique des logs au-delà
             ...options
         };
 
@@ -27,6 +29,9 @@ export class DiskView {
         this.isSpinning = false;
         this.headAngle = 0;
         this.diskAngle = 0;
+
+        // Disk allocation map: track -> [{dataset, startSector, sectorCount}]
+        this.diskMap = new Array(this.options.trackCount).fill(null).map(() => []);
 
         this.datasetColors = [
             '#00ff88', '#ff6b6b', '#4ecdc4', '#ffe66d',
@@ -57,7 +62,7 @@ export class DiskView {
             <div class="disk-panel">
                 <div class="disk-header">
                     <span class="disk-icon">💾</span>
-                    <span class="disk-label">IBM 3330 - VOL=WORK01</span>
+                    <span class="disk-label">HOPPER 33XX - VOL=WORK01</span>
                     <span class="disk-rpm">●</span>
                 </div>
                 <canvas id="disk-canvas" width="400" height="400"></canvas>
@@ -243,14 +248,19 @@ export class DiskView {
         if (!this.canvas) return;
         const dpr = window.devicePixelRatio || 1;
         const rect = this.canvas.getBoundingClientRect();
-        this.canvas.width = rect.width * dpr;
-        this.canvas.height = rect.height * dpr;
-        this.ctx.scale(dpr, dpr);
-        this.canvas.style.width = rect.width + 'px';
-        this.canvas.style.height = rect.height + 'px';
 
-        this.centerX = rect.width / 2;
-        this.centerY = rect.height / 2;
+        // Use fallback dimensions if tab is hidden (getBoundingClientRect returns 0)
+        const width = rect.width > 0 ? rect.width : 400;
+        const height = rect.height > 0 ? rect.height : 400;
+
+        this.canvas.width = width * dpr;
+        this.canvas.height = height * dpr;
+        this.ctx.scale(dpr, dpr);
+        this.canvas.style.width = width + 'px';
+        this.canvas.style.height = height + 'px';
+
+        this.centerX = width / 2;
+        this.centerY = height / 2;
     }
 
     startSpinning() {
@@ -358,46 +368,80 @@ export class DiskView {
     }
 
     drawDataset(ctx, dataset, trackWidth) {
-        const { innerRadius } = this.options;
-        const radius = innerRadius + (dataset.track + 0.5) * trackWidth;
+        const { innerRadius, sectorsPerTrack } = this.options;
 
-        const recordCount = dataset.records || 10;
-        const arcLength = Math.min(recordCount / 20, 0.8) * Math.PI * 2;
-        const startAngle = (dataset.startAngle || 0) + this.diskAngle;
+        // Draw each extent on its track
+        for (const extent of dataset.extents || []) {
+            const radius = innerRadius + (extent.track + 0.5) * trackWidth;
 
-        ctx.beginPath();
-        ctx.arc(this.centerX, this.centerY, radius, startAngle, startAngle + arcLength);
-        ctx.strokeStyle = dataset.color;
-        ctx.lineWidth = trackWidth - 6;
-        ctx.lineCap = 'round';
-        ctx.stroke();
+            // Convert sectors to arc angles
+            const sectorAngle = (Math.PI * 2) / sectorsPerTrack;
+            const startAngle = extent.startSector * sectorAngle + this.diskAngle;
+            const arcLength = extent.sectorCount * sectorAngle;
 
-        // Label
-        const labelAngle = startAngle + arcLength / 2;
-        const labelX = this.centerX + Math.cos(labelAngle) * radius;
-        const labelY = this.centerY + Math.sin(labelAngle) * radius;
+            ctx.beginPath();
+            ctx.arc(this.centerX, this.centerY, radius, startAngle, startAngle + arcLength);
+            ctx.strokeStyle = dataset.color;
+            ctx.lineWidth = trackWidth - 6;
+            ctx.lineCap = 'round';
+            ctx.stroke();
 
-        ctx.save();
-        ctx.translate(labelX, labelY);
-        ctx.rotate(labelAngle + Math.PI / 2);
-        ctx.fillStyle = '#000';
-        ctx.font = 'bold 9px "IBM Plex Mono", monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(dataset.name.substring(0, 8), 0, 3);
-        ctx.restore();
+            // Label on first extent only
+            if (extent === dataset.extents[0]) {
+                const labelAngle = startAngle + arcLength / 2;
+                const labelX = this.centerX + Math.cos(labelAngle) * radius;
+                const labelY = this.centerY + Math.sin(labelAngle) * radius;
+
+                ctx.save();
+                ctx.translate(labelX, labelY);
+                ctx.rotate(labelAngle + Math.PI / 2);
+                ctx.fillStyle = '#000';
+                ctx.font = 'bold 9px "IBM Plex Mono", monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(dataset.name.substring(0, 8), 0, 3);
+                ctx.restore();
+            }
+        }
 
         // Active record highlight
         if (dataset.activeRecord !== undefined) {
-            const recordAngle = startAngle + (dataset.activeRecord / Math.max(recordCount, 1)) * arcLength;
-            ctx.beginPath();
-            ctx.arc(
-                this.centerX + Math.cos(recordAngle) * radius,
-                this.centerY + Math.sin(recordAngle) * radius,
-                5, 0, Math.PI * 2
-            );
-            ctx.fillStyle = dataset.flashColor || '#fff';
-            ctx.fill();
+            const pos = this.getRecordPosition(dataset, dataset.activeRecord);
+            if (pos) {
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, 5, 0, Math.PI * 2);
+                ctx.fillStyle = dataset.flashColor || '#fff';
+                ctx.fill();
+            }
         }
+    }
+
+    /**
+     * Get the x,y position of a record on the disk
+     */
+    getRecordPosition(dataset, recordNumber) {
+        const { innerRadius, sectorsPerTrack } = this.options;
+        const trackWidth = (this.options.diskRadius - innerRadius) / this.options.trackCount;
+
+        // Find which extent contains this record
+        let sectorOffset = 0;
+        for (const extent of dataset.extents || []) {
+            if (recordNumber < sectorOffset + extent.sectorCount) {
+                // Record is in this extent
+                const sectorInExtent = recordNumber - sectorOffset;
+                const sectorAngle = (Math.PI * 2) / sectorsPerTrack;
+                const angle = (extent.startSector + sectorInExtent) * sectorAngle + this.diskAngle;
+                const radius = innerRadius + (extent.track + 0.5) * trackWidth;
+
+                return {
+                    x: this.centerX + Math.cos(angle) * radius,
+                    y: this.centerY + Math.sin(angle) * radius,
+                    track: extent.track,
+                    angle: angle
+                };
+            }
+            sectorOffset += extent.sectorCount;
+        }
+        return null;
     }
 
     drawHead(ctx, trackWidth) {
@@ -446,30 +490,263 @@ export class DiskView {
         const dataset = this.datasets.get(fileName);
         if (!dataset) return;
 
-        const recordCount = Math.max(dataset.records || 10, 1);
-        const arcLength = Math.min(recordCount / 20, 0.8) * Math.PI * 2;
-        const recordPosInArc = (recordNumber || 0) / recordCount * arcLength;
-        const recordBaseAngle = dataset.startAngle + recordPosInArc;
+        // Find which extent and sector for this record
+        let sectorOffset = 0;
+        for (const extent of dataset.extents || []) {
+            if (recordNumber < sectorOffset + extent.sectorCount) {
+                const sectorInExtent = recordNumber - sectorOffset;
+                const sectorAngle = (Math.PI * 2) / this.options.sectorsPerTrack;
+                const absoluteSector = extent.startSector + sectorInExtent;
 
-        this.targetDiskAngle = -recordBaseAngle;
+                // Move head to correct track
+                this.currentTrack = extent.track;
+
+                // Rotate disk so the sector is under the head (at angle 0 = right side)
+                // We want: absoluteSector * sectorAngle + diskAngle = 0
+                // So: diskAngle = -absoluteSector * sectorAngle
+                this.targetDiskAngle = -absoluteSector * sectorAngle;
+                return;
+            }
+            sectorOffset += extent.sectorCount;
+        }
+
+        // Fallback: just go to first extent
+        if (dataset.extents && dataset.extents.length > 0) {
+            this.currentTrack = dataset.extents[0].track;
+        }
     }
 
     registerDataset(fileName, options = {}) {
         if (this.datasets.has(fileName)) return;
 
-        const track = this.datasets.size % this.options.trackCount;
         const color = this.datasetColors[this.colorIndex++ % this.datasetColors.length];
+        const initialRecords = options.records || 1;
+
+        // Allocate space on disk
+        const extents = this.allocateSpace(fileName, initialRecords);
 
         this.datasets.set(fileName, {
             name: fileName,
-            track: track,
             color: color,
-            startAngle: Math.random() * Math.PI * 2,
-            records: options.records || 10, // Default to 10 for visibility
+            extents: extents,  // [{track, startSector, sectorCount}]
+            records: initialRecords,
             ...options
         });
 
         this.render();
+    }
+
+    /**
+     * Allocate disk space for a dataset
+     * Returns array of extents: [{track, startSector, sectorCount}]
+     */
+    allocateSpace(fileName, sectorCount) {
+        const extents = [];
+        let remaining = sectorCount;
+        const { trackCount, sectorsPerTrack } = this.options;
+
+        // Find first track that has space OR is empty
+        // This ensures different files start on different tracks when possible
+        let startTrack = 0;
+
+        // If this is a new dataset (not expansion), try to find a track with no allocations
+        // or continue from where we left off
+        const existingExtents = this.datasets.get(fileName)?.extents;
+        if (!existingExtents || existingExtents.length === 0) {
+            // New dataset - find first track with free space, preferring empty tracks
+            for (let t = 0; t < trackCount; t++) {
+                if (this.diskMap[t].length === 0) {
+                    startTrack = t;
+                    break;
+                }
+            }
+        } else {
+            // Expansion - continue from last extent's track
+            const lastExtent = existingExtents[existingExtents.length - 1];
+            startTrack = lastExtent.track;
+        }
+
+        for (let track = startTrack; track < trackCount && remaining > 0; track++) {
+            const trackAllocs = this.diskMap[track];
+            const usedSectors = this.getUsedSectorsOnTrack(track);
+            const freeSectors = sectorsPerTrack - usedSectors;
+
+            if (freeSectors > 0) {
+                // Find starting position (after last allocation on this track)
+                let startSector = 0;
+                if (trackAllocs.length > 0) {
+                    const lastAlloc = trackAllocs[trackAllocs.length - 1];
+                    startSector = lastAlloc.startSector + lastAlloc.sectorCount;
+                }
+
+                const allocSize = Math.min(remaining, freeSectors);
+                const extent = {
+                    dataset: fileName,
+                    track: track,
+                    startSector: startSector,
+                    sectorCount: allocSize
+                };
+
+                trackAllocs.push(extent);
+                extents.push(extent);
+                remaining -= allocSize;
+            }
+        }
+
+        // If we couldn't allocate from startTrack, try from beginning
+        if (remaining > 0 && startTrack > 0) {
+            for (let track = 0; track < startTrack && remaining > 0; track++) {
+                const trackAllocs = this.diskMap[track];
+                const usedSectors = this.getUsedSectorsOnTrack(track);
+                const freeSectors = sectorsPerTrack - usedSectors;
+
+                if (freeSectors > 0) {
+                    let startSector = 0;
+                    if (trackAllocs.length > 0) {
+                        const lastAlloc = trackAllocs[trackAllocs.length - 1];
+                        startSector = lastAlloc.startSector + lastAlloc.sectorCount;
+                    }
+
+                    const allocSize = Math.min(remaining, freeSectors);
+                    const extent = {
+                        dataset: fileName,
+                        track: track,
+                        startSector: startSector,
+                        sectorCount: allocSize
+                    };
+
+                    trackAllocs.push(extent);
+                    extents.push(extent);
+                    remaining -= allocSize;
+                }
+            }
+        }
+
+        return extents;
+    }
+
+    /**
+     * Get total used sectors on a track
+     */
+    getUsedSectorsOnTrack(track) {
+        return this.diskMap[track].reduce((sum, alloc) => sum + alloc.sectorCount, 0);
+    }
+
+    /**
+     * Expand dataset allocation when records are added
+     */
+    expandDataset(fileName, newRecordCount) {
+        const dataset = this.datasets.get(fileName);
+        if (!dataset) return;
+
+        const currentTotal = dataset.extents.reduce((sum, ext) => sum + ext.sectorCount, 0);
+        const needed = newRecordCount - currentTotal;
+
+        if (needed > 0) {
+            const newExtents = this.allocateSpace(fileName, needed);
+            dataset.extents.push(...newExtents);
+        }
+
+        dataset.records = newRecordCount;
+    }
+
+    /**
+     * Shrink dataset allocation when records are deleted
+     * Frees sectors from the end of the allocation
+     */
+    shrinkDataset(fileName, sectorsToFree = 1) {
+        const dataset = this.datasets.get(fileName);
+        if (!dataset || !dataset.extents || dataset.extents.length === 0) return;
+
+        let remaining = sectorsToFree;
+
+        // Free from the last extents first
+        while (remaining > 0 && dataset.extents.length > 0) {
+            const lastExtent = dataset.extents[dataset.extents.length - 1];
+
+            if (lastExtent.sectorCount <= remaining) {
+                // Remove entire extent
+                remaining -= lastExtent.sectorCount;
+                dataset.extents.pop();
+
+                // Remove from diskMap
+                const trackAllocs = this.diskMap[lastExtent.track];
+                const idx = trackAllocs.findIndex(a =>
+                    a.dataset === fileName &&
+                    a.startSector === lastExtent.startSector
+                );
+                if (idx !== -1) {
+                    trackAllocs.splice(idx, 1);
+                }
+            } else {
+                // Shrink this extent
+                lastExtent.sectorCount -= remaining;
+
+                // Update diskMap
+                const trackAllocs = this.diskMap[lastExtent.track];
+                const alloc = trackAllocs.find(a =>
+                    a.dataset === fileName &&
+                    a.startSector === lastExtent.startSector
+                );
+                if (alloc) {
+                    alloc.sectorCount = lastExtent.sectorCount;
+                }
+                remaining = 0;
+            }
+        }
+
+        dataset.records = Math.max(0, dataset.records - sectorsToFree);
+    }
+
+    /**
+     * Shrink dataset from the beginning (for log rotation - FIFO)
+     * Frees oldest sectors first
+     */
+    shrinkDatasetFromStart(fileName, sectorsToFree = 1) {
+        const dataset = this.datasets.get(fileName);
+        if (!dataset || !dataset.extents || dataset.extents.length === 0) return;
+
+        let remaining = sectorsToFree;
+
+        // Free from the first extents (oldest data)
+        while (remaining > 0 && dataset.extents.length > 0) {
+            const firstExtent = dataset.extents[0];
+
+            if (firstExtent.sectorCount <= remaining) {
+                // Remove entire extent
+                remaining -= firstExtent.sectorCount;
+                dataset.extents.shift();
+
+                // Remove from diskMap
+                const trackAllocs = this.diskMap[firstExtent.track];
+                const idx = trackAllocs.findIndex(a =>
+                    a.dataset === fileName &&
+                    a.startSector === firstExtent.startSector
+                );
+                if (idx !== -1) {
+                    trackAllocs.splice(idx, 1);
+                }
+            } else {
+                // Shrink from start of this extent
+                const freed = remaining;
+                firstExtent.startSector += freed;
+                firstExtent.sectorCount -= freed;
+
+                // Update diskMap
+                const trackAllocs = this.diskMap[firstExtent.track];
+                const alloc = trackAllocs.find(a =>
+                    a.dataset === fileName &&
+                    a.startSector === firstExtent.startSector - freed
+                );
+                if (alloc) {
+                    alloc.startSector = firstExtent.startSector;
+                    alloc.sectorCount = firstExtent.sectorCount;
+                }
+                remaining = 0;
+            }
+        }
+
+        dataset.records = Math.max(0, dataset.records - sectorsToFree);
     }
 
     onDiskIO(event) {
@@ -481,7 +758,14 @@ export class DiskView {
         }
 
         const dataset = this.datasets.get(fileName);
-        this.currentTrack = dataset.track;
+
+        // Update current track based on record position
+        const pos = this.getRecordPosition(dataset, recordNumber || 0);
+        if (pos) {
+            this.currentTrack = pos.track;
+        } else if (dataset.extents && dataset.extents.length > 0) {
+            this.currentTrack = dataset.extents[0].track;
+        }
         this.currentRecord = recordNumber || 0;
 
         switch (operation) {
@@ -490,9 +774,28 @@ export class DiskView {
                 this.displayRecord(record, fileName, recordNumber);
                 break;
             case 'WRITE':
+                // Check if we need log rotation (max 40 records per file for visual clarity)
+                const maxRecords = this.options.maxRecordsPerFile || 40;
+                if (dataset.records >= maxRecords) {
+                    // Rotate: free oldest sector to make room
+                    this.shrinkDatasetFromStart(fileName, 1);
+                }
+                // Expand allocation if needed
+                const newRecordCount = Math.max(dataset.records, (recordNumber || 0) + 1);
+                if (newRecordCount > dataset.records) {
+                    this.expandDataset(fileName, newRecordCount);
+                }
                 this.flashWrite(dataset, recordNumber);
-                dataset.records = Math.max(dataset.records, (recordNumber || 0) + 1);
                 this.displayRecord(record, fileName, recordNumber);
+                break;
+            case 'REWRITE':
+                this.flashRewrite(dataset, recordNumber);
+                this.displayRecord(record, fileName, recordNumber);
+                break;
+            case 'DELETE':
+                // Free the sector used by this record
+                this.shrinkDataset(fileName, 1);
+                this.flashDelete(dataset, recordNumber);
                 break;
             case 'OPEN':
                 this.flashOpen(dataset);
@@ -543,6 +846,40 @@ export class DiskView {
         }, 300);
     }
 
+    flashRewrite(dataset, recordNumber) {
+        dataset.activeRecord = recordNumber;
+        dataset.flashColor = '#ffa500'; // Orange for update
+        this.headGlow = 'rgba(255, 165, 0, 0.6)';
+        this.headColor = '#ffa500';
+        if (this.canvas) this.canvas.classList.add('flash-write');
+
+        this.seekToRecord(dataset.name, recordNumber);
+
+        setTimeout(() => {
+            dataset.activeRecord = undefined;
+            this.headGlow = null;
+            this.headColor = '#888';
+            if (this.canvas) this.canvas.classList.remove('flash-write');
+            this.render();
+        }, 300);
+    }
+
+    flashDelete(dataset, recordNumber) {
+        dataset.activeRecord = recordNumber;
+        dataset.flashColor = '#ff0000'; // Red for delete
+        this.headGlow = 'rgba(255, 0, 0, 0.6)';
+        this.headColor = '#ff0000';
+
+        this.seekToRecord(dataset.name, recordNumber);
+
+        setTimeout(() => {
+            dataset.activeRecord = undefined;
+            this.headGlow = null;
+            this.headColor = '#888';
+            this.render();
+        }, 300);
+    }
+
     flashOpen(dataset) {
         this.headColor = '#4ecdc4';
         this.seekToRecord(dataset.name, 0);
@@ -588,14 +925,17 @@ export class DiskView {
             <span class="io-op ${opClass}">${operation}</span>
             <span class="io-file">${fileName}</span>
             <span class="io-rec">${recordNumber !== undefined ? `#${recordNumber}` : ''}</span>
-            <span class="io-line" data-line="${cobolLine}">L.${cobolLine || '?'}</span>
+            ${cobolLine ? `<span class="io-line" data-line="${cobolLine}">L.${cobolLine}</span>` : ''}
         `;
 
-        entry.querySelector('.io-line').addEventListener('click', () => {
-            if (this.onLineClick && cobolLine) {
-                this.onLineClick(cobolLine);
-            }
-        });
+        const lineEl = entry.querySelector('.io-line');
+        if (lineEl) {
+            lineEl.addEventListener('click', () => {
+                if (this.onLineClick && cobolLine) {
+                    this.onLineClick(cobolLine);
+                }
+            });
+        }
 
         this.ioTimeline.insertBefore(entry, this.ioTimeline.firstChild);
 
@@ -623,6 +963,8 @@ export class DiskView {
         this.currentTrack = 0;
         this.currentRecord = 0;
         this.colorIndex = 0;
+        // Reset disk allocation map
+        this.diskMap = new Array(this.options.trackCount).fill(null).map(() => []);
         if (this.ioTimeline) this.ioTimeline.innerHTML = '';
         if (this.recordDisplay) this.recordDisplay.textContent = '--- AUCUNE DONNÉE ---';
         this.updateStatus();
