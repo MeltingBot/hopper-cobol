@@ -580,10 +580,27 @@ export function compileOnly() {
                 showOutput('warning', `⚠ ${warning}`);
             },
             dataManager: window.dataManagerModule?.getFilesSync() || {},
-            onDiskIO: (event) => {
+            onDiskIO: async (event) => {
                 // Send I/O operations to disk view and terminal
                 if (window.diskView) {
                     window.diskView.onDiskIO(event);
+
+                    // For OPEN operations, get current record count from dataManager
+                    if (event.operation === 'OPEN' && window.dataManagerModule) {
+                        try {
+                            const files = await window.dataManagerModule.getFiles();
+                            const file = files.find(f => f.name.toUpperCase() === event.fileName.toUpperCase());
+                            if (file) {
+                                const dataset = window.diskView.datasets.get(event.fileName);
+                                if (dataset) {
+                                    dataset.records = file.records?.length || 0;
+                                    window.diskView.render();
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Failed to get file count:', e);
+                        }
+                    }
                 }
                 if (window.terminalWrite) {
                     const { operation, fileName, recordNumber } = event;
