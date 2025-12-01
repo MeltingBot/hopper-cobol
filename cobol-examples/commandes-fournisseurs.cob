@@ -60,6 +60,12 @@
        01 WS-MONTANT       PIC 9(7)V99 VALUE 0.
        01 WS-COUNT         PIC 999 VALUE 0.
        01 WS-LIGNE         PIC 99 VALUE 0.
+      * Variables pour la pagination
+       01 WS-PAGE          PIC 999 VALUE 1.
+       01 WS-PAGE-COUNT    PIC 99 VALUE 0.
+       01 WS-NAV           PIC X VALUE SPACE.
+       01 WS-LIGNES-MAX    PIC 99 VALUE 8.
+       01 WS-TOTAL-GLOBAL  PIC 9999 VALUE 0.
        PROCEDURE DIVISION.
        DEBUT.
            OPEN I-O FOURNISSEURS.
@@ -234,45 +240,98 @@
            ACCEPT WS-CHOIX LINE 18 POSITION 49.
 
        LISTER-FOURNISSEURS.
+           MOVE 1 TO WS-PAGE.
+           MOVE 0 TO WS-TOTAL-GLOBAL.
+           MOVE LOW-VALUES TO FRN-CODE.
+           START FOURNISSEURS KEY >= FRN-CODE
+               INVALID KEY
+                   DISPLAY ' ' LINE 1 POSITION 1 ERASE EOS
+                   DISPLAY '=== LISTE FOURNISSEURS ===' LINE 2 POSITION 27
+                       HIGHLIGHT
+                   DISPLAY 'AUCUN FOURNISSEUR' LINE 10 POSITION 31 HIGHLIGHT
+                   DISPLAY 'Appuyez ENTREE...' LINE 20 POSITION 31 BLINK
+                   ACCEPT WS-CHOIX LINE 20 POSITION 49
+               NOT INVALID KEY
+                   MOVE 0 TO WS-EOF
+                   MOVE SPACE TO WS-NAV
+                   PERFORM UNTIL WS-NAV = 'Q'
+                       MOVE LOW-VALUES TO FRN-CODE
+                       START FOURNISSEURS KEY >= FRN-CODE
+                       MOVE 0 TO WS-EOF
+                       PERFORM AFFICHER-PAGE-FOURNISSEURS
+                       IF WS-EOF = 0
+                           DISPLAY '[P]rec [S]uite [Q]uitter' LINE 20
+                               POSITION 25
+                           ACCEPT WS-NAV LINE 20 POSITION 51
+                           EVALUATE WS-NAV
+                               WHEN 'S'
+                                   ADD 1 TO WS-PAGE
+                               WHEN 's'
+                                   ADD 1 TO WS-PAGE
+                               WHEN 'P'
+                                   IF WS-PAGE > 1
+                                       SUBTRACT 1 FROM WS-PAGE
+                                   END-IF
+                               WHEN 'p'
+                                   IF WS-PAGE > 1
+                                       SUBTRACT 1 FROM WS-PAGE
+                                   END-IF
+                               WHEN OTHER
+                                   MOVE 'Q' TO WS-NAV
+                           END-EVALUATE
+                       ELSE
+                           DISPLAY 'Fin - Appuyez ENTREE...' LINE 20
+                               POSITION 28 BLINK
+                           ACCEPT WS-CHOIX LINE 20 POSITION 52
+                           MOVE 'Q' TO WS-NAV
+                       END-IF
+                   END-PERFORM
+           END-START.
+
+       AFFICHER-PAGE-FOURNISSEURS.
            DISPLAY ' ' LINE 1 POSITION 1 ERASE EOS.
            DISPLAY '=== LISTE FOURNISSEURS ===' LINE 2 POSITION 27
                HIGHLIGHT.
+           DISPLAY 'Page' LINE 2 POSITION 55.
+           DISPLAY WS-PAGE LINE 2 POSITION 60.
            DISPLAY 'CODE' LINE 5 POSITION 5 UNDERLINE.
            DISPLAY 'NOM' LINE 5 POSITION 12 UNDERLINE.
            DISPLAY 'TELEPHONE' LINE 5 POSITION 35 UNDERLINE.
            DISPLAY 'DELAI' LINE 5 POSITION 48 UNDERLINE.
            DISPLAY '---------------------------------------------------'
                LINE 6 POSITION 5.
-           MOVE LOW-VALUES TO FRN-CODE.
-           START FOURNISSEURS KEY >= FRN-CODE
-               INVALID KEY
-                   DISPLAY 'AUCUN FOURNISSEUR' LINE 8 POSITION 31
-                       HIGHLIGHT
-               NOT INVALID KEY
-                   MOVE 0 TO WS-EOF
-                   MOVE 0 TO WS-COUNT
-                   MOVE 7 TO WS-LIGNE
-                   PERFORM UNTIL WS-EOF = 1 OR WS-LIGNE > 16
-                       READ FOURNISSEURS NEXT
-                           AT END MOVE 1 TO WS-EOF
-                           NOT AT END
-                               DISPLAY FRN-CODE LINE WS-LIGNE POSITION 5
-                               DISPLAY FRN-NOM LINE WS-LIGNE POSITION 12
-                               DISPLAY FRN-TEL LINE WS-LIGNE POSITION 35
-                               DISPLAY FRN-DELAI LINE WS-LIGNE POSITION 48
-                               DISPLAY 'J' LINE WS-LIGNE POSITION 51
-                               ADD 1 TO WS-LIGNE
-                               ADD 1 TO WS-COUNT
-                       END-READ
-                   END-PERFORM
-                   DISPLAY '---------------------------------------------------'
-                       LINE 17 POSITION 5
-                   DISPLAY 'Total:' LINE 18 POSITION 25
-                   DISPLAY WS-COUNT LINE 18 POSITION 32 HIGHLIGHT
-                   DISPLAY 'fournisseurs' LINE 18 POSITION 37
-           END-START.
-           DISPLAY 'Appuyez ENTREE...' LINE 20 POSITION 31 BLINK.
-           ACCEPT WS-CHOIX LINE 20 POSITION 49.
+      *    Sauter les pages precedentes
+           MOVE 0 TO WS-COUNT.
+           COMPUTE WS-COUNT = (WS-PAGE - 1) * WS-LIGNES-MAX.
+           IF WS-COUNT > 0
+               PERFORM WS-COUNT TIMES
+                   READ FOURNISSEURS NEXT
+                       AT END MOVE 1 TO WS-EOF
+                   END-READ
+               END-PERFORM
+           END-IF.
+      *    Afficher la page courante
+           MOVE 0 TO WS-PAGE-COUNT.
+           MOVE 7 TO WS-LIGNE.
+           PERFORM UNTIL WS-EOF = 1 OR WS-PAGE-COUNT >= WS-LIGNES-MAX
+               READ FOURNISSEURS NEXT
+                   AT END MOVE 1 TO WS-EOF
+                   NOT AT END
+                       DISPLAY FRN-CODE LINE WS-LIGNE POSITION 5
+                       DISPLAY FRN-NOM LINE WS-LIGNE POSITION 12
+                       DISPLAY FRN-TEL LINE WS-LIGNE POSITION 35
+                       DISPLAY FRN-DELAI LINE WS-LIGNE POSITION 48
+                       DISPLAY 'J' LINE WS-LIGNE POSITION 51
+                       ADD 1 TO WS-LIGNE
+                       ADD 1 TO WS-PAGE-COUNT
+                       ADD 1 TO WS-TOTAL-GLOBAL
+               END-READ
+           END-PERFORM.
+           DISPLAY '---------------------------------------------------'
+               LINE 17 POSITION 5.
+           DISPLAY 'Affichage:' LINE 18 POSITION 5.
+           DISPLAY WS-TOTAL-GLOBAL LINE 18 POSITION 16 HIGHLIGHT.
+           DISPLAY 'fournisseur(s)' LINE 18 POSITION 21.
 
       *===============================================
       * GESTION DES PRODUITS
@@ -425,50 +484,110 @@
                INVALID KEY
                    DISPLAY 'FOURNISSEUR INCONNU' LINE 12 POSITION 30
                        HIGHLIGHT
+                   DISPLAY 'Appuyez ENTREE...' LINE 20 POSITION 31 BLINK
+                   ACCEPT WS-CHOIX LINE 20 POSITION 49
                NOT INVALID KEY
-                   DISPLAY 'Catalogue:' LINE 5 POSITION 15
-                   DISPLAY FRN-NOM LINE 5 POSITION 26 HIGHLIGHT
-                   DISPLAY 'CODE' LINE 7 POSITION 5 UNDERLINE
-                   DISPLAY 'LIBELLE' LINE 7 POSITION 14 UNDERLINE
-                   DISPLAY 'PRIX' LINE 7 POSITION 37 UNDERLINE
-                   DISPLAY 'STOCK' LINE 7 POSITION 48 UNDERLINE
-                   DISPLAY '---------------------------------------------------'
-                       LINE 8 POSITION 5
+                   MOVE 1 TO WS-PAGE
+                   MOVE 0 TO WS-TOTAL-GLOBAL
                    MOVE LOW-VALUES TO PRD-CODE
                    START PRODUITS KEY >= PRD-CODE
                        INVALID KEY
-                           DISPLAY 'AUCUN PRODUIT' LINE 10 POSITION 33
+                           DISPLAY 'Catalogue:' LINE 5 POSITION 15
+                           DISPLAY FRN-NOM LINE 5 POSITION 26 HIGHLIGHT
+                           DISPLAY 'AUCUN PRODUIT' LINE 12 POSITION 33
+                           DISPLAY 'Appuyez ENTREE...' LINE 20 POSITION 31
+                               BLINK
+                           ACCEPT WS-CHOIX LINE 20 POSITION 49
                        NOT INVALID KEY
                            MOVE 0 TO WS-EOF
-                           MOVE 0 TO WS-COUNT
-                           MOVE 9 TO WS-LIGNE
-                           PERFORM UNTIL WS-EOF = 1 OR WS-LIGNE > 16
-                               READ PRODUITS NEXT
-                                   AT END MOVE 1 TO WS-EOF
-                                   NOT AT END
-                                       IF PRD-FRN = FRN-CODE
-                                           DISPLAY PRD-CODE LINE WS-LIGNE
-                                               POSITION 5
-                                           DISPLAY PRD-LIBELLE LINE
-                                               WS-LIGNE POSITION 14
-                                           DISPLAY PRD-PRIX LINE WS-LIGNE
-                                               POSITION 35
-                                           DISPLAY PRD-STOCK LINE WS-LIGNE
-                                               POSITION 48
-                                           ADD 1 TO WS-LIGNE
-                                           ADD 1 TO WS-COUNT
-                                       END-IF
-                               END-READ
+                           MOVE SPACE TO WS-NAV
+                           PERFORM UNTIL WS-NAV = 'Q'
+                               MOVE LOW-VALUES TO PRD-CODE
+                               START PRODUITS KEY >= PRD-CODE
+                               MOVE 0 TO WS-EOF
+                               PERFORM AFFICHER-PAGE-CATALOGUE
+                               IF WS-EOF = 0
+                                   DISPLAY '[P]rec [S]uite [Q]uitter' LINE 20
+                                       POSITION 25
+                                   ACCEPT WS-NAV LINE 20 POSITION 51
+                                   EVALUATE WS-NAV
+                                       WHEN 'S'
+                                           ADD 1 TO WS-PAGE
+                                       WHEN 's'
+                                           ADD 1 TO WS-PAGE
+                                       WHEN 'P'
+                                           IF WS-PAGE > 1
+                                               SUBTRACT 1 FROM WS-PAGE
+                                           END-IF
+                                       WHEN 'p'
+                                           IF WS-PAGE > 1
+                                               SUBTRACT 1 FROM WS-PAGE
+                                           END-IF
+                                       WHEN OTHER
+                                           MOVE 'Q' TO WS-NAV
+                                   END-EVALUATE
+                               ELSE
+                                   DISPLAY 'Fin - Appuyez ENTREE...' LINE 20
+                                       POSITION 28 BLINK
+                                   ACCEPT WS-CHOIX LINE 20 POSITION 52
+                                   MOVE 'Q' TO WS-NAV
+                               END-IF
                            END-PERFORM
-                           DISPLAY '---------------------------------------------------'
-                               LINE 17 POSITION 5
-                           DISPLAY 'Total:' LINE 18 POSITION 25
-                           DISPLAY WS-COUNT LINE 18 POSITION 32 HIGHLIGHT
-                           DISPLAY 'produits' LINE 18 POSITION 38
                    END-START
            END-READ.
-           DISPLAY 'Appuyez ENTREE...' LINE 20 POSITION 31 BLINK.
-           ACCEPT WS-CHOIX LINE 20 POSITION 49.
+
+       AFFICHER-PAGE-CATALOGUE.
+           DISPLAY ' ' LINE 1 POSITION 1 ERASE EOS.
+           DISPLAY '=== CATALOGUE FOURNISSEUR ===' LINE 2 POSITION 25
+               HIGHLIGHT.
+           DISPLAY 'Page' LINE 2 POSITION 55.
+           DISPLAY WS-PAGE LINE 2 POSITION 60.
+           DISPLAY 'Catalogue:' LINE 4 POSITION 15.
+           DISPLAY FRN-NOM LINE 4 POSITION 26 HIGHLIGHT.
+           DISPLAY 'CODE' LINE 6 POSITION 5 UNDERLINE.
+           DISPLAY 'LIBELLE' LINE 6 POSITION 14 UNDERLINE.
+           DISPLAY 'PRIX' LINE 6 POSITION 37 UNDERLINE.
+           DISPLAY 'STOCK' LINE 6 POSITION 48 UNDERLINE.
+           DISPLAY '---------------------------------------------------'
+               LINE 7 POSITION 5.
+      *    Sauter les pages precedentes
+           MOVE 0 TO WS-COUNT.
+           COMPUTE WS-COUNT = (WS-PAGE - 1) * WS-LIGNES-MAX.
+           IF WS-COUNT > 0
+               PERFORM UNTIL WS-COUNT = 0 OR WS-EOF = 1
+                   READ PRODUITS NEXT
+                       AT END MOVE 1 TO WS-EOF
+                       NOT AT END
+                           IF PRD-FRN = FRN-CODE
+                               SUBTRACT 1 FROM WS-COUNT
+                           END-IF
+                   END-READ
+               END-PERFORM
+           END-IF.
+      *    Afficher la page courante
+           MOVE 0 TO WS-PAGE-COUNT.
+           MOVE 8 TO WS-LIGNE.
+           PERFORM UNTIL WS-EOF = 1 OR WS-PAGE-COUNT >= WS-LIGNES-MAX
+               READ PRODUITS NEXT
+                   AT END MOVE 1 TO WS-EOF
+                   NOT AT END
+                       IF PRD-FRN = FRN-CODE
+                           DISPLAY PRD-CODE LINE WS-LIGNE POSITION 5
+                           DISPLAY PRD-LIBELLE LINE WS-LIGNE POSITION 14
+                           DISPLAY PRD-PRIX LINE WS-LIGNE POSITION 35
+                           DISPLAY PRD-STOCK LINE WS-LIGNE POSITION 48
+                           ADD 1 TO WS-LIGNE
+                           ADD 1 TO WS-PAGE-COUNT
+                           ADD 1 TO WS-TOTAL-GLOBAL
+                       END-IF
+               END-READ
+           END-PERFORM.
+           DISPLAY '---------------------------------------------------'
+               LINE 17 POSITION 5.
+           DISPLAY 'Affichage:' LINE 18 POSITION 5.
+           DISPLAY WS-TOTAL-GLOBAL LINE 18 POSITION 16 HIGHLIGHT.
+           DISPLAY 'produit(s) pour' LINE 18 POSITION 21.
+           DISPLAY FRN-CODE LINE 18 POSITION 37.
 
       *===============================================
       * SAISIE DES COMMANDES
@@ -682,6 +801,64 @@
            DISPLAY 'Statut (E/V/R/X/T=Tous):' LINE 4 POSITION 20.
            DISPLAY '[_]' LINE 4 POSITION 45 REVERSE-VIDEO.
            ACCEPT WS-CONFIRM LINE 4 POSITION 46.
+           MOVE 1 TO WS-PAGE.
+           MOVE 0 TO WS-TOTAL-GLOBAL.
+           MOVE 0 TO WS-TOTAL.
+           MOVE 0 TO CMD-NUM.
+           START COMMANDES KEY >= CMD-NUM
+               INVALID KEY
+                   DISPLAY 'AUCUNE COMMANDE' LINE 10 POSITION 32
+                   DISPLAY 'Appuyez ENTREE...' LINE 20 POSITION 31 BLINK
+                   ACCEPT WS-CHOIX LINE 20 POSITION 49
+               NOT INVALID KEY
+                   MOVE 0 TO WS-EOF
+                   MOVE SPACE TO WS-NAV
+                   PERFORM UNTIL WS-NAV = 'Q'
+                       MOVE 0 TO CMD-NUM
+                       START COMMANDES KEY >= CMD-NUM
+                       MOVE 0 TO WS-EOF
+                       PERFORM AFFICHER-PAGE-COMMANDES
+                       IF WS-EOF = 0
+                           DISPLAY '[P]rec [S]uite [Q]uitter' LINE 21
+                               POSITION 25
+                           ACCEPT WS-NAV LINE 21 POSITION 51
+                           EVALUATE WS-NAV
+                               WHEN 'S'
+                                   ADD 1 TO WS-PAGE
+                               WHEN 's'
+                                   ADD 1 TO WS-PAGE
+                               WHEN 'P'
+                                   IF WS-PAGE > 1
+                                       SUBTRACT 1 FROM WS-PAGE
+                                   END-IF
+                               WHEN 'p'
+                                   IF WS-PAGE > 1
+                                       SUBTRACT 1 FROM WS-PAGE
+                                   END-IF
+                               WHEN OTHER
+                                   MOVE 'Q' TO WS-NAV
+                           END-EVALUATE
+                       ELSE
+                           DISPLAY 'Fin - Appuyez ENTREE...' LINE 21
+                               POSITION 28 BLINK
+                           ACCEPT WS-CHOIX LINE 21 POSITION 52
+                           MOVE 'Q' TO WS-NAV
+                       END-IF
+                   END-PERFORM
+           END-START.
+
+       AFFICHER-PAGE-COMMANDES.
+           DISPLAY ' ' LINE 1 POSITION 1 ERASE EOS.
+           DISPLAY '=== LISTE DES COMMANDES ===' LINE 2 POSITION 26
+               HIGHLIGHT.
+           DISPLAY 'Page' LINE 2 POSITION 55.
+           DISPLAY WS-PAGE LINE 2 POSITION 60.
+           DISPLAY 'Filtre:' LINE 4 POSITION 20.
+           IF WS-CONFIRM = 'T'
+               DISPLAY 'TOUS' LINE 4 POSITION 28 HIGHLIGHT
+           ELSE
+               DISPLAY WS-CONFIRM LINE 4 POSITION 28 HIGHLIGHT
+           END-IF.
            DISPLAY 'NUM' LINE 6 POSITION 3 UNDERLINE.
            DISPLAY 'FRN' LINE 6 POSITION 11 UNDERLINE.
            DISPLAY 'PRODUIT' LINE 6 POSITION 17 UNDERLINE.
@@ -690,47 +867,50 @@
            DISPLAY 'STAT' LINE 6 POSITION 44 UNDERLINE.
            DISPLAY '------------------------------------------------'
                LINE 7 POSITION 3.
-           MOVE 0 TO CMD-NUM.
-           START COMMANDES KEY >= CMD-NUM
-               INVALID KEY
-                   DISPLAY 'AUCUNE COMMANDE' LINE 10 POSITION 32
-               NOT INVALID KEY
-                   MOVE 0 TO WS-EOF
-                   MOVE 0 TO WS-TOTAL
-                   MOVE 0 TO WS-COUNT
-                   MOVE 8 TO WS-LIGNE
-                   PERFORM UNTIL WS-EOF = 1 OR WS-LIGNE > 16
-                       READ COMMANDES NEXT
-                           AT END MOVE 1 TO WS-EOF
-                           NOT AT END
-                               IF WS-CONFIRM = 'T'
-                                   OR CMD-STATUT = WS-CONFIRM
-                                   COMPUTE WS-MONTANT = CMD-QTE * CMD-PRIX
-                                   ADD WS-MONTANT TO WS-TOTAL
-                                   ADD 1 TO WS-COUNT
-                                   DISPLAY CMD-NUM LINE WS-LIGNE POSITION 3
-                                   DISPLAY CMD-FRN LINE WS-LIGNE POSITION 11
-                                   DISPLAY CMD-PRD LINE WS-LIGNE POSITION 17
-                                   DISPLAY CMD-QTE LINE WS-LIGNE POSITION 26
-                                   DISPLAY WS-MONTANT LINE WS-LIGNE
-                                       POSITION 31
-                                   DISPLAY CMD-STATUT LINE WS-LIGNE
-                                       POSITION 45
-                                   ADD 1 TO WS-LIGNE
-                               END-IF
-                       END-READ
-                   END-PERFORM
-                   DISPLAY '------------------------------------------------'
-                       LINE 17 POSITION 3
-                   DISPLAY 'Total:' LINE 18 POSITION 10
-                   DISPLAY WS-COUNT LINE 18 POSITION 17 HIGHLIGHT
-                   DISPLAY 'commandes' LINE 18 POSITION 22
-                   DISPLAY 'Montant:' LINE 19 POSITION 10
-                   DISPLAY WS-TOTAL LINE 19 POSITION 19 HIGHLIGHT
-                   DISPLAY 'EUR' LINE 19 POSITION 30
-           END-START.
-           DISPLAY 'Appuyez ENTREE...' LINE 22 POSITION 31 BLINK.
-           ACCEPT WS-CHOIX LINE 22 POSITION 49.
+      *    Sauter les pages precedentes
+           MOVE 0 TO WS-COUNT.
+           COMPUTE WS-COUNT = (WS-PAGE - 1) * WS-LIGNES-MAX.
+           IF WS-COUNT > 0
+               PERFORM UNTIL WS-COUNT = 0 OR WS-EOF = 1
+                   READ COMMANDES NEXT
+                       AT END MOVE 1 TO WS-EOF
+                       NOT AT END
+                           IF WS-CONFIRM = 'T' OR CMD-STATUT = WS-CONFIRM
+                               SUBTRACT 1 FROM WS-COUNT
+                           END-IF
+                   END-READ
+               END-PERFORM
+           END-IF.
+      *    Afficher la page courante
+           MOVE 0 TO WS-PAGE-COUNT.
+           MOVE 8 TO WS-LIGNE.
+           PERFORM UNTIL WS-EOF = 1 OR WS-PAGE-COUNT >= WS-LIGNES-MAX
+               READ COMMANDES NEXT
+                   AT END MOVE 1 TO WS-EOF
+                   NOT AT END
+                       IF WS-CONFIRM = 'T' OR CMD-STATUT = WS-CONFIRM
+                           COMPUTE WS-MONTANT = CMD-QTE * CMD-PRIX
+                           ADD WS-MONTANT TO WS-TOTAL
+                           ADD 1 TO WS-TOTAL-GLOBAL
+                           DISPLAY CMD-NUM LINE WS-LIGNE POSITION 3
+                           DISPLAY CMD-FRN LINE WS-LIGNE POSITION 11
+                           DISPLAY CMD-PRD LINE WS-LIGNE POSITION 17
+                           DISPLAY CMD-QTE LINE WS-LIGNE POSITION 26
+                           DISPLAY WS-MONTANT LINE WS-LIGNE POSITION 31
+                           DISPLAY CMD-STATUT LINE WS-LIGNE POSITION 45
+                           ADD 1 TO WS-LIGNE
+                           ADD 1 TO WS-PAGE-COUNT
+                       END-IF
+               END-READ
+           END-PERFORM.
+           DISPLAY '------------------------------------------------'
+               LINE 17 POSITION 3.
+           DISPLAY 'Affichage:' LINE 18 POSITION 5.
+           DISPLAY WS-TOTAL-GLOBAL LINE 18 POSITION 16 HIGHLIGHT.
+           DISPLAY 'commande(s)' LINE 18 POSITION 21.
+           DISPLAY 'Montant cumule:' LINE 19 POSITION 5.
+           DISPLAY WS-TOTAL LINE 19 POSITION 21 HIGHLIGHT.
+           DISPLAY 'EUR' LINE 19 POSITION 32.
 
       *===============================================
       * RECEPTION DES COMMANDES
@@ -808,9 +988,60 @@
            ACCEPT WS-CHOIX LINE 18 POSITION 49.
 
        COMMANDES-EN-ATTENTE.
+           MOVE 1 TO WS-PAGE.
+           MOVE 0 TO WS-TOTAL-GLOBAL.
+           MOVE 0 TO CMD-NUM.
+           START COMMANDES KEY >= CMD-NUM
+               INVALID KEY
+                   DISPLAY ' ' LINE 1 POSITION 1 ERASE EOS
+                   DISPLAY '=== COMMANDES EN ATTENTE DE RECEPTION ==='
+                       LINE 2 POSITION 19 HIGHLIGHT
+                   DISPLAY 'AUCUNE COMMANDE' LINE 10 POSITION 32
+                   DISPLAY 'Appuyez ENTREE...' LINE 20 POSITION 31 BLINK
+                   ACCEPT WS-CHOIX LINE 20 POSITION 49
+               NOT INVALID KEY
+                   MOVE 0 TO WS-EOF
+                   MOVE SPACE TO WS-NAV
+                   PERFORM UNTIL WS-NAV = 'Q'
+                       MOVE 0 TO CMD-NUM
+                       START COMMANDES KEY >= CMD-NUM
+                       MOVE 0 TO WS-EOF
+                       PERFORM AFFICHER-PAGE-ATTENTE
+                       IF WS-EOF = 0
+                           DISPLAY '[P]rec [S]uite [Q]uitter' LINE 20
+                               POSITION 25
+                           ACCEPT WS-NAV LINE 20 POSITION 51
+                           EVALUATE WS-NAV
+                               WHEN 'S'
+                                   ADD 1 TO WS-PAGE
+                               WHEN 's'
+                                   ADD 1 TO WS-PAGE
+                               WHEN 'P'
+                                   IF WS-PAGE > 1
+                                       SUBTRACT 1 FROM WS-PAGE
+                                   END-IF
+                               WHEN 'p'
+                                   IF WS-PAGE > 1
+                                       SUBTRACT 1 FROM WS-PAGE
+                                   END-IF
+                               WHEN OTHER
+                                   MOVE 'Q' TO WS-NAV
+                           END-EVALUATE
+                       ELSE
+                           DISPLAY 'Fin - Appuyez ENTREE...' LINE 20
+                               POSITION 28 BLINK
+                           ACCEPT WS-CHOIX LINE 20 POSITION 52
+                           MOVE 'Q' TO WS-NAV
+                       END-IF
+                   END-PERFORM
+           END-START.
+
+       AFFICHER-PAGE-ATTENTE.
            DISPLAY ' ' LINE 1 POSITION 1 ERASE EOS.
            DISPLAY '=== COMMANDES EN ATTENTE DE RECEPTION ==='
                LINE 2 POSITION 19 HIGHLIGHT.
+           DISPLAY 'Page' LINE 2 POSITION 62.
+           DISPLAY WS-PAGE LINE 2 POSITION 67.
            DISPLAY 'NUM' LINE 5 POSITION 5 UNDERLINE.
            DISPLAY 'FRN' LINE 5 POSITION 14 UNDERLINE.
            DISPLAY 'PRODUIT' LINE 5 POSITION 21 UNDERLINE.
@@ -818,34 +1049,41 @@
            DISPLAY 'DATE' LINE 5 POSITION 38 UNDERLINE.
            DISPLAY '---------------------------------------------'
                LINE 6 POSITION 5.
-           MOVE 0 TO CMD-NUM.
-           START COMMANDES KEY >= CMD-NUM
-               INVALID KEY
-                   DISPLAY 'AUCUNE COMMANDE' LINE 10 POSITION 32
-               NOT INVALID KEY
-                   MOVE 0 TO WS-EOF
-                   MOVE 0 TO WS-COUNT
-                   MOVE 7 TO WS-LIGNE
-                   PERFORM UNTIL WS-EOF = 1 OR WS-LIGNE > 16
-                       READ COMMANDES NEXT
-                           AT END MOVE 1 TO WS-EOF
-                           NOT AT END
-                               IF CMD-STATUT = 'V'
-                                   ADD 1 TO WS-COUNT
-                                   DISPLAY CMD-NUM LINE WS-LIGNE POSITION 5
-                                   DISPLAY CMD-FRN LINE WS-LIGNE POSITION 14
-                                   DISPLAY CMD-PRD LINE WS-LIGNE POSITION 21
-                                   DISPLAY CMD-QTE LINE WS-LIGNE POSITION 30
-                                   DISPLAY CMD-DATE LINE WS-LIGNE POSITION 36
-                                   ADD 1 TO WS-LIGNE
-                               END-IF
-                       END-READ
-                   END-PERFORM
-                   DISPLAY '---------------------------------------------'
-                       LINE 17 POSITION 5
-                   DISPLAY WS-COUNT LINE 18 POSITION 25 HIGHLIGHT
-                   DISPLAY 'commandes en attente' LINE 18 POSITION 30
-           END-START.
-           DISPLAY 'Appuyez ENTREE...' LINE 20 POSITION 31 BLINK.
-           ACCEPT WS-CHOIX LINE 20 POSITION 49.
+      *    Sauter les pages precedentes
+           MOVE 0 TO WS-COUNT.
+           COMPUTE WS-COUNT = (WS-PAGE - 1) * WS-LIGNES-MAX.
+           IF WS-COUNT > 0
+               PERFORM UNTIL WS-COUNT = 0 OR WS-EOF = 1
+                   READ COMMANDES NEXT
+                       AT END MOVE 1 TO WS-EOF
+                       NOT AT END
+                           IF CMD-STATUT = 'V'
+                               SUBTRACT 1 FROM WS-COUNT
+                           END-IF
+                   END-READ
+               END-PERFORM
+           END-IF.
+      *    Afficher la page courante
+           MOVE 0 TO WS-PAGE-COUNT.
+           MOVE 7 TO WS-LIGNE.
+           PERFORM UNTIL WS-EOF = 1 OR WS-PAGE-COUNT >= WS-LIGNES-MAX
+               READ COMMANDES NEXT
+                   AT END MOVE 1 TO WS-EOF
+                   NOT AT END
+                       IF CMD-STATUT = 'V'
+                           ADD 1 TO WS-TOTAL-GLOBAL
+                           DISPLAY CMD-NUM LINE WS-LIGNE POSITION 5
+                           DISPLAY CMD-FRN LINE WS-LIGNE POSITION 14
+                           DISPLAY CMD-PRD LINE WS-LIGNE POSITION 21
+                           DISPLAY CMD-QTE LINE WS-LIGNE POSITION 30
+                           DISPLAY CMD-DATE LINE WS-LIGNE POSITION 36
+                           ADD 1 TO WS-LIGNE
+                           ADD 1 TO WS-PAGE-COUNT
+                       END-IF
+               END-READ
+           END-PERFORM.
+           DISPLAY '---------------------------------------------'
+               LINE 17 POSITION 5.
+           DISPLAY WS-TOTAL-GLOBAL LINE 18 POSITION 25 HIGHLIGHT.
+           DISPLAY 'commande(s) en attente' LINE 18 POSITION 30.
 
