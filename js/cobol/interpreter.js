@@ -1077,7 +1077,6 @@ class CobolFileIDB {
         }
 
         const fileName = this.getFileName();
-        // Pad the key value to match the stored format (COBOL pads strings with spaces)
         const searchKey = keyValue?.toString();
         const record = await this.storage.readByKey(fileName, searchKey);
 

@@ -270,9 +270,33 @@ export async function readByKey(fileName, keyValue) {
     return new Promise((resolve, reject) => {
         const tx = db.transaction(storeName, 'readonly');
         const store = tx.objectStore(storeName);
+
+        // First try exact match with trimmed key
         const request = store.get(trimmedKey);
 
-        request.onsuccess = () => resolve(request.result);
+        request.onsuccess = () => {
+            if (request.result) {
+                resolve(request.result);
+            } else {
+                // Fallback: search for keys that match after trimming
+                // (for backward compatibility with old padded keys)
+                const cursorRequest = store.openCursor();
+                cursorRequest.onsuccess = (event) => {
+                    const cursor = event.target.result;
+                    if (cursor) {
+                        const storedKey = cursor.key?.toString().trim();
+                        if (storedKey === trimmedKey) {
+                            resolve(cursor.value);
+                        } else {
+                            cursor.continue();
+                        }
+                    } else {
+                        resolve(null);
+                    }
+                };
+                cursorRequest.onerror = () => reject(cursorRequest.error);
+            }
+        };
         request.onerror = () => reject(request.error);
     });
 }
@@ -339,6 +363,13 @@ export async function writeRecord(fileName, record) {
         const tx = db.transaction(storeName, 'readwrite');
         const store = tx.objectStore(storeName);
 
+        // Trim the key field value if this store has a keyPath
+        // (COBOL pads strings with spaces, but we need consistent keys)
+        const keyPath = store.keyPath;
+        if (keyPath && record[keyPath] !== undefined) {
+            record[keyPath] = record[keyPath]?.toString().trim();
+        }
+
         // First count existing records to get the record number
         const countRequest = store.count();
         countRequest.onsuccess = () => {
@@ -372,6 +403,14 @@ export async function rewriteRecord(fileName, record) {
     return new Promise((resolve, reject) => {
         const tx = db.transaction(storeName, 'readwrite');
         const store = tx.objectStore(storeName);
+
+        // Trim the key field value if this store has a keyPath
+        // (COBOL pads strings with spaces, but we need consistent keys)
+        const keyPath = store.keyPath;
+        if (keyPath && record[keyPath] !== undefined) {
+            record[keyPath] = record[keyPath]?.toString().trim();
+        }
+
         const request = store.put(record);
 
         request.onsuccess = () => resolve({ success: true });
